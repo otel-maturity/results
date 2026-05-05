@@ -1,0 +1,37 @@
+apiVersion: tekton.dev/v1
+kind: Pipeline
+metadata:
+  name: backend-pipeline
+  namespace: tekton-pipelines
+spec:
+  params:
+    - name: run-id
+      type: string
+      default: "1"
+  tasks:
+    - name: health-check
+      taskRef:
+        name: call-backend
+      params:
+        - name: path
+          value: "/"
+        - name: method
+          value: "GET"
+    - name: post-data
+      taskRef:
+        name: call-backend
+      params:
+        - name: path
+          value: "/echo"
+        - name: method
+          value: "POST"
+      runAfter:
+        - health-check
+    - name: integration-run
+      taskRef:
+        name: backend-integration
+      params:
+        - name: run-id
+          value: "$(params.run-id)"
+      runAfter:
+        - post-data

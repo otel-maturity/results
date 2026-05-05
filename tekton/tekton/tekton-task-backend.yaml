@@ -1,0 +1,34 @@
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: call-backend
+  namespace: tekton-pipelines
+spec:
+  params:
+    - name: path
+      type: string
+      default: "/"
+    - name: method
+      type: string
+      default: "GET"
+  steps:
+    - name: curl-backend
+      image: curlimages/curl:8.11.1
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        allowPrivilegeEscalation: false
+        seccompProfile:
+          type: RuntimeDefault
+        capabilities:
+          drop:
+            - ALL
+      script: |
+        #!/bin/sh
+        echo "Calling backend: $(params.method) $(params.path)"
+        curl -s -X $(params.method) \
+          -H "Content-Type: application/json" \
+          http://otel-eval-backend.demo.svc.cluster.local:3000$(params.path) \
+          | head -c 500
+        echo ""
+        echo "Done."

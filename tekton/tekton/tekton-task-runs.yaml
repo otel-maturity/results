@@ -1,0 +1,100 @@
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: call-backend
+  namespace: tekton-runs
+spec:
+  params:
+    - name: path
+      type: string
+      default: "/"
+    - name: method
+      type: string
+      default: "GET"
+  steps:
+    - name: curl-backend
+      image: curlimages/curl:8.11.1
+      script: |
+        #!/bin/sh
+        echo "Calling backend: $(params.method) $(params.path)"
+        curl -s -X $(params.method) \
+          -H "Content-Type: application/json" \
+          http://otel-eval-backend.demo.svc.cluster.local:3000$(params.path) \
+          | head -c 500
+        echo ""
+        echo "Done."
+---
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: backend-integration
+  namespace: tekton-runs
+spec:
+  params:
+    - name: run-id
+      type: string
+      default: "1"
+  steps:
+    - name: health-check
+      image: curlimages/curl:8.11.1
+      script: |
+        #!/bin/sh
+        echo "Run $(params.run-id): Health check"
+        curl -sf http://otel-eval-backend.demo.svc.cluster.local:3000/ && echo "OK"
+    - name: post-data
+      image: curlimages/curl:8.11.1
+      script: |
+        #!/bin/sh
+        echo "Run $(params.run-id): POST request"
+        curl -s -X POST \
+          -H "Content-Type: application/json" \
+          -d "{\"run\": \"$(params.run-id)\", \"source\": \"tekton-taskrun\"}" \
+          http://otel-eval-backend.demo.svc.cluster.local:3000/echo
+        echo ""
+    - name: trace-context-test
+      image: curlimages/curl:8.11.1
+      script: |
+        #!/bin/sh
+        echo "Run $(params.run-id): Trace context propagation test"
+        curl -s \
+          -H "traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01" \
+          http://otel-eval-backend.demo.svc.cluster.local:3000/
+        echo ""
+---
+apiVersion: tekton.dev/v1
+kind: Pipeline
+metadata:
+  name: backend-pipeline
+  namespace: tekton-runs
+spec:
+  params:
+    - name: run-id
+      type: string
+      default: "1"
+  tasks:
+    - name: health-check
+      taskRef:
+        name: call-backend
+      params:
+        - name: path
+          value: "/"
+        - name: method
+          value: "GET"
+    - name: post-data
+      taskRef:
+        name: call-backend
+      params:
+        - name: path
+          value: "/echo"
+        - name: method
+          value: "POST"
+      runAfter:
+        - health-check
+    - name: integration-run
+      taskRef:
+        name: backend-integration
+      params:
+        - name: run-id
+          value: "$(params.run-id)"
+      runAfter:
+        - post-data

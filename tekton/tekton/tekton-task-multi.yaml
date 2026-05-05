@@ -1,0 +1,45 @@
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: backend-integration
+  namespace: tekton-pipelines
+spec:
+  params:
+    - name: run-id
+      type: string
+      default: "1"
+  steps:
+    - name: health-check
+      image: curlimages/curl:8.11.1
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        allowPrivilegeEscalation: false
+        seccompProfile:
+          type: RuntimeDefault
+        capabilities:
+          drop:
+            - ALL
+      script: |
+        #!/bin/sh
+        echo "Run $(params.run-id): Health check"
+        curl -sf http://otel-eval-backend.demo.svc.cluster.local:3000/ && echo "OK"
+    - name: post-data
+      image: curlimages/curl:8.11.1
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        allowPrivilegeEscalation: false
+        seccompProfile:
+          type: RuntimeDefault
+        capabilities:
+          drop:
+            - ALL
+      script: |
+        #!/bin/sh
+        echo "Run $(params.run-id): POST request"
+        curl -s -X POST \
+          -H "Content-Type: application/json" \
+          -d "{\"run\": \"$(params.run-id)\", \"source\": \"tekton-taskrun\"}" \
+          http://otel-eval-backend.demo.svc.cluster.local:3000/echo
+        echo ""
