@@ -1,0 +1,69 @@
+# Traefik Helm values for OTel evaluation
+# Chart: traefik/traefik v39.0.9 (app v3.6.15)
+
+# Experimental features needed for OTLP log export
+experimental:
+  otlpLogs: true
+
+# Tracing via OTLP gRPC
+# Note: tracing.otlp.enabled=true is required to activate the OTLP exporter
+tracing:
+  addInternals: true
+  otlp:
+    enabled: true
+    grpc:
+      enabled: true
+      endpoint: "otel-collector-opentelemetry-collector.opentelemetry.svc.cluster.local:4317"
+      insecure: true
+
+# Metrics via OTLP gRPC (in addition to default Prometheus)
+# Note: metrics.otlp.enabled=true is required to activate the OTLP exporter
+metrics:
+  addInternals: true
+  prometheus:
+    addRoutersLabels: true
+    addServicesLabels: true
+    service:
+      enabled: true
+  otlp:
+    enabled: true
+    addRoutersLabels: true
+    addServicesLabels: true
+    grpc:
+      enabled: true
+      endpoint: "otel-collector-opentelemetry-collector.opentelemetry.svc.cluster.local:4317"
+      insecure: true
+
+# General logs via OTLP gRPC
+# Note: logs.general.otlp.enabled=true and logs.access.otlp.enabled=true required
+logs:
+  general:
+    format: json
+    level: INFO
+    otlp:
+      enabled: true
+      grpc:
+        enabled: true
+        endpoint: "otel-collector-opentelemetry-collector.opentelemetry.svc.cluster.local:4317"
+        insecure: true
+  access:
+    enabled: true
+    format: json
+    otlp:
+      enabled: true
+      grpc:
+        enabled: true
+        endpoint: "otel-collector-opentelemetry-collector.opentelemetry.svc.cluster.local:4317"
+        insecure: true
+
+# Traefik dashboard entrypoint is on 8080 by default.
+# Move metrics entrypoint to 9100 to avoid port conflict.
+ports:
+  metrics:
+    port: 9100
+    expose:
+      default: false
+
+# Use ClusterIP (we'll port-forward for testing)
+service:
+  type: ClusterIP
