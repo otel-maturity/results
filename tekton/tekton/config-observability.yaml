@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: config-observability
+  namespace: tekton-pipelines
+  labels:
+    app.kubernetes.io/instance: default
+    app.kubernetes.io/part-of: tekton-pipelines
+data:
+  # Export metrics via OTLP HTTP to the OTel Collector
+  # Note: grpc protocol requires TLS; use http/protobuf for plaintext
+  metrics-protocol: http/protobuf
+  metrics-endpoint: "http://otel-collector-opentelemetry-collector.opentelemetry.svc.cluster.local:4318"
+  metrics-export-interval: "30s"
+  # Tekton-specific metrics labels
+  metrics.taskrun.level: "task"
+  metrics.taskrun.duration-type: "histogram"
+  metrics.pipelinerun.level: "pipeline"
+  metrics.pipelinerun.duration-type: "histogram"
+  metrics.count.enable-reason: "false"

@@ -1,0 +1,27 @@
+apiVersion: tekton.dev/v1
+kind: PipelineRun
+metadata:
+  generateName: hello-pipeline-run-
+  namespace: default
+spec:
+  pipelineSpec:
+    tasks:
+      - name: task-a
+        taskSpec:
+          steps:
+            - name: step-a
+              image: alpine:3.19
+              script: |
+                #!/bin/sh
+                echo "Pipeline Task A running"
+                sleep 1
+      - name: task-b
+        runAfter: [task-a]
+        taskSpec:
+          steps:
+            - name: step-b
+              image: alpine:3.19
+              script: |
+                #!/bin/sh
+                echo "Pipeline Task B running (after A)"
+                sleep 1

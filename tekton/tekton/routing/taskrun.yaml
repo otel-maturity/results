@@ -1,0 +1,15 @@
+apiVersion: tekton.dev/v1
+kind: TaskRun
+metadata:
+  generateName: hello-taskrun-
+  namespace: default
+spec:
+  taskSpec:
+    steps:
+      - name: hello
+        image: alpine:3.19
+        script: |
+          #!/bin/sh
+          echo "Hello from Tekton TaskRun!"
+          sleep 2
+          echo "Done."
