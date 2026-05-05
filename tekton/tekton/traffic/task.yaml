@@ -1,0 +1,39 @@
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: call-eval-backend
+  namespace: default
+spec:
+  params:
+    - name: message
+      type: string
+      default: "hello"
+    - name: traceparent
+      type: string
+      default: ""
+  steps:
+    - name: curl-backend
+      image: curlimages/curl:8.7.1
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: ["ALL"]
+        seccompProfile:
+          type: RuntimeDefault
+      script: |
+        #!/bin/sh
+        set -e
+        echo "Calling otel-eval-backend with message: $(params.message)"
+        if [ -n "$(params.traceparent)" ]; then
+          curl -sf \
+            -H "traceparent: $(params.traceparent)" \
+            http://otel-eval-backend.demo.svc.cluster.local:3000/ | head -c 500
+        else
+          curl -sf \
+            http://otel-eval-backend.demo.svc.cluster.local:3000/ | head -c 500
+        fi
+        echo ""
+        echo "Done."
