@@ -1,0 +1,108 @@
+# Traefik Helm values for OTel evaluation
+# Chart: traefik/traefik v39.0.9 (App: v3.6.15)
+
+image:
+  tag: "v3.6.15"
+
+deployment:
+  replicas: 1
+
+# Enable experimental OTLP logs feature
+experimental:
+  otlpLogs: true
+
+# General logs — JSON format + OTLP export
+logs:
+  general:
+    format: json
+    level: INFO
+    otlp:
+      enabled: true
+      grpc:
+        enabled: true
+        endpoint: "otel-collector-opentelemetry-collector.opentelemetry.svc.cluster.local:4317"
+        insecure: true
+  access:
+    enabled: true
+    format: json
+    otlp:
+      enabled: true
+      grpc:
+        enabled: true
+        endpoint: "otel-collector-opentelemetry-collector.opentelemetry.svc.cluster.local:4317"
+        insecure: true
+
+# Tracing — OTLP gRPC to OTel Collector
+tracing:
+  addInternals: true
+  capturedRequestHeaders:
+    - traceparent
+    - tracestate
+    - x-forwarded-for
+  capturedResponseHeaders: []
+  sampleRate: 1.0
+  otlp:
+    enabled: true
+    grpc:
+      enabled: true
+      endpoint: "otel-collector-opentelemetry-collector.opentelemetry.svc.cluster.local:4317"
+      insecure: true
+
+# Metrics — OTLP gRPC push + keep Prometheus endpoint
+metrics:
+  addInternals: true
+  prometheus:
+    entryPoint: metrics
+    addEntryPointsLabels: true
+    addRoutersLabels: true
+    addServicesLabels: true
+  otlp:
+    enabled: true
+    addEntryPointsLabels: true
+    addRoutersLabels: true
+    addServicesLabels: true
+    pushInterval: "10s"
+    grpc:
+      enabled: true
+      endpoint: "otel-collector-opentelemetry-collector.opentelemetry.svc.cluster.local:4317"
+      insecure: true
+
+# Ports
+ports:
+  web:
+    port: 8000
+    expose:
+      default: true
+    exposedPort: 80
+  traefik:
+    port: 8080
+    expose:
+      default: false
+  metrics:
+    port: 9100
+    expose:
+      default: false
+
+# Service — ClusterIP so we can port-forward
+service:
+  type: ClusterIP
+
+# Ingress provider
+providers:
+  kubernetesIngress:
+    enabled: true
+    allowExternalNameServices: false
+  kubernetesCRD:
+    enabled: true
+    allowExternalNameServices: false
+
+# Tolerate control-plane taint in kind
+tolerations:
+  - key: node-role.kubernetes.io/control-plane
+    operator: Exists
+    effect: NoSchedule
+
+# Disable update check and anonymous usage
+global:
+  checkNewVersion: false
+  sendAnonymousUsage: false
