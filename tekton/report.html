@@ -1,0 +1,894 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>OpenTelemetry Maturity Report — Tekton Pipeline</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    /* ── Reset & base ──────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { font-size: 16px; scroll-behavior: smooth; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: #f5f7fa;
+      color: #1a2332;
+      line-height: 1.65;
+    }
+
+    /* ── Layout ────────────────────────────────────────────────────── */
+    .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+    section { margin-bottom: 48px; }
+
+    /* ── Header ────────────────────────────────────────────────────── */
+    .site-header {
+      background: linear-gradient(135deg, #0f2c4a 0%, #1a4a7a 60%, #1e6baa 100%);
+      color: #fff;
+      padding: 56px 0 48px;
+    }
+    .site-header .container { display: flex; flex-direction: column; gap: 12px; }
+    .header-badge {
+      display: inline-block;
+      background: rgba(255,255,255,0.15);
+      border: 1px solid rgba(255,255,255,0.3);
+      border-radius: 20px;
+      padding: 4px 14px;
+      font-size: 0.78rem;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      width: fit-content;
+    }
+    .site-header h1 { font-size: 2.4rem; font-weight: 700; line-height: 1.2; }
+    .site-header h1 span { color: #7ec8e3; }
+    .header-meta { display: flex; flex-wrap: wrap; gap: 24px; margin-top: 8px; font-size: 0.9rem; opacity: 0.85; }
+    .header-meta span::before { content: "▸ "; }
+    .header-desc { max-width: 680px; font-size: 1.05rem; opacity: 0.9; margin-top: 4px; }
+
+    /* ── Section titles ────────────────────────────────────────────── */
+    .section-title {
+      font-size: 1.35rem;
+      font-weight: 700;
+      color: #0f2c4a;
+      margin-bottom: 20px;
+      padding-bottom: 10px;
+      border-bottom: 2px solid #d0e4f7;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .section-title .icon { font-size: 1.2rem; }
+
+    /* ── Card ──────────────────────────────────────────────────────── */
+    .card {
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.07), 0 4px 16px rgba(0,0,0,0.05);
+      padding: 28px 32px;
+    }
+
+    /* ── Radar chart section ───────────────────────────────────────── */
+    .chart-section { padding-top: 48px; }
+    .chart-wrapper {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 32px;
+      align-items: flex-start;
+    }
+    .chart-canvas-wrap {
+      flex: 1 1 400px;
+      max-width: 520px;
+      min-width: 300px;
+    }
+    .chart-legend {
+      flex: 1 1 260px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .chart-legend h3 { font-size: 0.95rem; font-weight: 600; color: #0f2c4a; margin-bottom: 4px; }
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 14px;
+      border-radius: 8px;
+      background: #f5f7fa;
+      border-left: 4px solid transparent;
+    }
+    .legend-item.l0 { border-color: #e07b54; }
+    .legend-item.l1 { border-color: #e0b84a; }
+    .legend-item.l2 { border-color: #3a8fc7; }
+    .legend-item.l3 { border-color: #3aab6f; }
+    .legend-num {
+      font-size: 1.3rem;
+      font-weight: 800;
+      min-width: 28px;
+      text-align: center;
+    }
+    .legend-item.l0 .legend-num { color: #e07b54; }
+    .legend-item.l1 .legend-num { color: #c9960a; }
+    .legend-item.l2 .legend-num { color: #3a8fc7; }
+    .legend-item.l3 .legend-num { color: #3aab6f; }
+    .legend-text strong { display: block; font-size: 0.9rem; }
+    .legend-text span { font-size: 0.8rem; color: #5a6e85; }
+
+    /* ── Summary table ─────────────────────────────────────────────── */
+    .summary-table { width: 100%; border-collapse: collapse; font-size: 0.93rem; }
+    .summary-table th {
+      text-align: left;
+      padding: 10px 14px;
+      background: #eaf3fc;
+      color: #0f2c4a;
+      font-weight: 600;
+      font-size: 0.82rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .summary-table td { padding: 12px 14px; border-bottom: 1px solid #e8eef5; vertical-align: top; }
+    .summary-table tr:last-child td { border-bottom: none; }
+    .summary-table tr:hover td { background: #f8fbff; }
+    .level-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 3px 10px;
+      border-radius: 20px;
+      font-weight: 700;
+      font-size: 0.82rem;
+      white-space: nowrap;
+    }
+    .lvl-0 { background: #fde8e0; color: #b84a24; }
+    .lvl-1 { background: #fef3d0; color: #8a6200; }
+    .lvl-2 { background: #d6eaf8; color: #1a5a8a; }
+    .lvl-3 { background: #d5f0e2; color: #1a6e42; }
+
+    /* ── Signal overview ───────────────────────────────────────────── */
+    .signals-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
+    .signal-card {
+      border-radius: 10px;
+      padding: 20px 22px;
+      border: 1px solid #e0eaf4;
+      background: #fff;
+      display: flex;
+      align-items: flex-start;
+      gap: 14px;
+    }
+    .signal-icon { font-size: 2rem; line-height: 1; }
+    .signal-info h4 { font-size: 0.95rem; font-weight: 700; margin-bottom: 4px; }
+    .signal-status {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 12px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      margin-bottom: 6px;
+    }
+    .status-flowing { background: #d5f0e2; color: #1a6e42; }
+    .status-partial { background: #fef3d0; color: #8a6200; }
+    .status-missing { background: #fde8e0; color: #b84a24; }
+    .signal-info p { font-size: 0.83rem; color: #4a6070; line-height: 1.5; }
+
+    /* ── Dimension detail (accordion) ──────────────────────────────── */
+    .dim-list { display: flex; flex-direction: column; gap: 12px; }
+    details.dim-card {
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.06), 0 2px 10px rgba(0,0,0,0.04);
+      overflow: hidden;
+      border: 1px solid #e0eaf4;
+    }
+    details.dim-card[open] { border-color: #a8ccec; }
+    summary.dim-summary {
+      list-style: none;
+      cursor: pointer;
+      padding: 18px 24px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      user-select: none;
+      transition: background 0.15s;
+    }
+    summary.dim-summary::-webkit-details-marker { display: none; }
+    summary.dim-summary:hover { background: #f5f9ff; }
+    .dim-num {
+      font-size: 0.78rem;
+      font-weight: 700;
+      color: #7a9bb5;
+      min-width: 28px;
+    }
+    .dim-title { flex: 1; font-weight: 600; font-size: 1rem; color: #0f2c4a; }
+    .dim-chevron { font-size: 0.9rem; color: #7a9bb5; transition: transform 0.2s; }
+    details[open] .dim-chevron { transform: rotate(90deg); }
+    .dim-body { padding: 0 28px 28px; display: flex; flex-direction: column; gap: 20px; }
+    .dim-block h4 {
+      font-size: 0.82rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: #5a7a9a;
+      margin-bottom: 8px;
+    }
+    .dim-block p, .dim-block li { font-size: 0.93rem; color: #2a3f55; }
+    .dim-block ul { padding-left: 18px; display: flex; flex-direction: column; gap: 5px; }
+    code {
+      background: #eef3f8;
+      border: 1px solid #d0dde8;
+      border-radius: 4px;
+      padding: 1px 5px;
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+      font-size: 0.84em;
+      color: #1a4a7a;
+    }
+    .opportunity-list { display: flex; flex-direction: column; gap: 8px; }
+    .opportunity-item {
+      background: #f0f8ff;
+      border-left: 3px solid #3a8fc7;
+      padding: 10px 14px;
+      border-radius: 0 8px 8px 0;
+      font-size: 0.9rem;
+      color: #1a3a55;
+    }
+    .working-item {
+      background: #f0faf5;
+      border-left: 3px solid #3aab6f;
+      padding: 10px 14px;
+      border-radius: 0 8px 8px 0;
+      font-size: 0.9rem;
+      color: #1a3a2a;
+    }
+
+    /* ── Key takeaways ─────────────────────────────────────────────── */
+    .takeaways-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; }
+    .takeaway-card {
+      background: #fff;
+      border-radius: 12px;
+      border: 1px solid #e0eaf4;
+      padding: 22px 24px;
+    }
+    .takeaway-card h3 {
+      font-size: 0.9rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 14px;
+      padding-bottom: 8px;
+      border-bottom: 2px solid;
+    }
+    .takeaway-card.strengths h3 { color: #1a6e42; border-color: #3aab6f; }
+    .takeaway-card.improvements h3 { color: #1a5a8a; border-color: #3a8fc7; }
+    .takeaway-card.observations h3 { color: #7a4a00; border-color: #e0b84a; }
+    .takeaway-card ul { padding-left: 16px; display: flex; flex-direction: column; gap: 8px; font-size: 0.9rem; }
+    .takeaway-card li { color: #2a3f55; }
+
+    /* ── Footer ────────────────────────────────────────────────────── */
+    .site-footer {
+      background: #0f2c4a;
+      color: rgba(255,255,255,0.7);
+      padding: 36px 0;
+      font-size: 0.85rem;
+      margin-top: 60px;
+    }
+    .site-footer .container { display: flex; flex-wrap: wrap; gap: 16px; justify-content: space-between; align-items: flex-start; }
+    .site-footer a { color: #7ec8e3; text-decoration: none; }
+    .site-footer a:hover { text-decoration: underline; }
+    .footer-block h4 { color: #fff; font-size: 0.88rem; margin-bottom: 8px; }
+    .footer-block p, .footer-block li { margin-bottom: 4px; }
+    .footer-block ul { list-style: none; }
+
+    /* ── Utilities ─────────────────────────────────────────────────── */
+    .mt-4 { margin-top: 16px; }
+    .mt-8 { margin-top: 32px; }
+    .gap-row { display: flex; flex-wrap: wrap; gap: 12px; }
+
+    @media (max-width: 640px) {
+      .site-header h1 { font-size: 1.8rem; }
+      .card { padding: 20px 18px; }
+      .dim-body { padding: 0 16px 20px; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════════════════════
+     HEADER
+════════════════════════════════════════════════════════════════════ -->
+<header class="site-header">
+  <div class="container">
+    <div class="header-badge">OpenTelemetry Maturity Report</div>
+    <h1>Tekton <span>Pipeline</span></h1>
+    <div class="header-meta">
+      <span>Version: v1.12.0 "Exotic Shorthair Elektrobots LTS"</span>
+      <span>Evaluated: 2026-05-05</span>
+      <span>Model: OTel Maturity Model for CNCF Projects (draft)</span>
+    </div>
+    <p class="header-desc">
+      CNCF-graduated Kubernetes-native CI/CD framework providing CRD-based primitives
+      (Task, TaskRun, Pipeline, PipelineRun) for building, testing, and deploying software.
+    </p>
+  </div>
+</header>
+
+<main class="container" style="padding-top:48px; padding-bottom:24px;">
+
+<!-- ═══════════════════════════════════════════════════════════════════
+     RADAR CHART
+════════════════════════════════════════════════════════════════════ -->
+<section class="chart-section">
+  <h2 class="section-title"><span class="icon">📡</span> Maturity Overview</h2>
+  <div class="card">
+    <div class="chart-wrapper">
+      <div class="chart-canvas-wrap">
+        <canvas id="radarChart" style="max-height:420px;"></canvas>
+      </div>
+      <div class="chart-legend">
+        <h3>Scale Reference</h3>
+        <div class="legend-item l0">
+          <div class="legend-num">0</div>
+          <div class="legend-text">
+            <strong>Instrumented</strong>
+            <span>Basic telemetry emitted; minimal OTel alignment</span>
+          </div>
+        </div>
+        <div class="legend-item l1">
+          <div class="legend-num">1</div>
+          <div class="legend-text">
+            <strong>OTel-Aligned</strong>
+            <span>OTLP supported; partial semconv; gaps remain</span>
+          </div>
+        </div>
+        <div class="legend-item l2">
+          <div class="legend-num">2</div>
+          <div class="legend-text">
+            <strong>OTel-Native</strong>
+            <span>Configurable OTLP; meaningful signals; documented</span>
+          </div>
+        </div>
+        <div class="legend-item l3">
+          <div class="legend-num">3</div>
+          <div class="legend-text">
+            <strong>OTel-Optimized</strong>
+            <span>Full semconv; correlated signals; stable contracts</span>
+          </div>
+        </div>
+
+        <div style="margin-top:16px; background:#f5f7fa; border-radius:10px; padding:14px 16px;">
+          <div style="font-size:0.82rem; color:#5a6e85; margin-bottom:6px; font-weight:600; text-transform:uppercase; letter-spacing:0.04em;">Overall Average</div>
+          <div style="font-size:2rem; font-weight:800; color:#1a5a8a;">1.57 <span style="font-size:1rem; font-weight:400; color:#7a9bb5;">/ 3</span></div>
+          <div style="font-size:0.83rem; color:#5a6e85; margin-top:2px;">Between OTel-Aligned and OTel-Native</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════════
+     SUMMARY TABLE
+════════════════════════════════════════════════════════════════════ -->
+<section>
+  <h2 class="section-title"><span class="icon">📋</span> Dimension Summary</h2>
+  <div class="card" style="padding:0; overflow:hidden;">
+    <table class="summary-table">
+      <thead>
+        <tr>
+          <th style="width:36%">Dimension</th>
+          <th style="width:18%">Level</th>
+          <th>Summary</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>1. Integration Surface</strong></td>
+          <td><span class="level-badge lvl-2">2 — OTel-Native</span></td>
+          <td>OTLP traces (HTTP) and Prometheus/OTLP metrics supported; no OTLP log export</td>
+        </tr>
+        <tr>
+          <td><strong>2. Semantic Conventions</strong></td>
+          <td><span class="level-badge lvl-1">1 — OTel-Aligned</span></td>
+          <td>Non-standard span attribute keys (<code>taskrun</code>, <code>namespace</code>); custom metric naming; outdated semconv schema URL v1.12.0</td>
+        </tr>
+        <tr>
+          <td><strong>3. Resource Attributes &amp; Configuration</strong></td>
+          <td><span class="level-badge lvl-1">1 — OTel-Aligned</span></td>
+          <td>Only <code>service.name</code> set natively; no <code>service.version</code>, <code>telemetry.sdk.*</code>, or <code>service.instance.id</code>; no OTEL_* env var support</td>
+        </tr>
+        <tr>
+          <td><strong>4. Trace Modeling &amp; Context Propagation</strong></td>
+          <td><span class="level-badge lvl-2">2 — OTel-Native</span></td>
+          <td>Rich parent-child span trees for TaskRun/PipelineRun lifecycle; W3C Trace Context propagation via annotation; all spans are INTERNAL kind</td>
+        </tr>
+        <tr>
+          <td><strong>5. Multi-Signal Observability</strong></td>
+          <td><span class="level-badge lvl-1">1 — OTel-Aligned</span></td>
+          <td>Traces via OTLP; metrics via Prometheus (OTLP optional); no log signal; no cross-signal correlation</td>
+        </tr>
+        <tr>
+          <td><strong>6. Audience &amp; Signal Quality</strong></td>
+          <td><span class="level-badge lvl-2">2 — OTel-Native</span></td>
+          <td>Span names reflect meaningful lifecycle operations; Tekton-specific metrics are actionable; some internal spans add noise</td>
+        </tr>
+        <tr>
+          <td><strong>7. Stability &amp; Change Management</strong></td>
+          <td><span class="level-badge lvl-2">2 — OTel-Native</span></td>
+          <td>Dedicated metrics migration guide; telemetry labeled "experimental"; schema URL present; no explicit stability contract</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════════
+     SIGNAL OVERVIEW
+════════════════════════════════════════════════════════════════════ -->
+<section>
+  <h2 class="section-title"><span class="icon">📶</span> Signal Overview</h2>
+  <div class="signals-grid">
+    <div class="signal-card">
+      <div class="signal-icon">🔭</div>
+      <div class="signal-info">
+        <h4>Traces</h4>
+        <span class="signal-status status-flowing">Flowing</span>
+        <p>OTLP HTTP (<code>otlptracehttp</code>) to collector port 4318. Disabled by default — enabled via <code>config-tracing</code> ConfigMap. 17 JSONL batches observed with spans from <code>taskrun-reconciler</code> and <code>pipelinerun-reconciler</code>.</p>
+      </div>
+    </div>
+    <div class="signal-card">
+      <div class="signal-icon">📊</div>
+      <div class="signal-info">
+        <h4>Metrics</h4>
+        <span class="signal-status status-flowing">Flowing</span>
+        <p>Prometheus scrape from controller/webhook/events-controller pods on <code>:9090</code>. Optional OTLP export via <code>config-observability</code>. 160 JSONL batches observed including Tekton-specific, Go runtime, and Knative infrastructure metrics.</p>
+      </div>
+    </div>
+    <div class="signal-card">
+      <div class="signal-icon">📝</div>
+      <div class="signal-info">
+        <h4>Logs</h4>
+        <span class="signal-status status-missing">Not via OTLP</span>
+        <p>Stdout/stderr only as structured JSON via zap logger. No OTLP log export capability in v1.12.0. Logs include <code>knative.dev/traceid</code> (a UUID, not an OTel trace ID) — no log-trace correlation available.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════════
+     PER-DIMENSION DETAILS
+════════════════════════════════════════════════════════════════════ -->
+<section>
+  <h2 class="section-title"><span class="icon">🔍</span> Dimension Details</h2>
+  <div class="dim-list">
+
+    <!-- ── 1. Integration Surface ── -->
+    <details class="dim-card">
+      <summary class="dim-summary">
+        <span class="dim-num">01</span>
+        <span class="dim-title">Integration Surface</span>
+        <span class="level-badge lvl-2">Level 2 — OTel-Native</span>
+        <span class="dim-chevron">▶</span>
+      </summary>
+      <div class="dim-body">
+        <div class="dim-block">
+          <h4>What We Observed</h4>
+          <p>Tekton supports OTLP export for both traces and metrics. Traces flow via <code>otlptracehttp</code> to a configurable endpoint, controlled by the <code>config-tracing</code> ConfigMap (<code>enabled: "true"</code>, <code>endpoint: "http://host:port/v1/traces"</code>). Metrics default to Prometheus scrape on <code>:9090</code> with optional OTLP export (<code>grpc</code> or <code>http/protobuf</code>) via <code>config-observability</code>. Both paths are documented in official Tekton docs and ConfigMap <code>_example</code> sections. Logs remain stdout-only with no OTLP path.</p>
+          <p class="mt-4">A notable documentation gap exists: the <code>config-observability</code> ConfigMap's <code>_example</code> section shows <code>tracing-protocol</code> and <code>tracing-endpoint</code> keys that are <strong>not</strong> used by the actual OTLP trace exporter — only <code>config-tracing</code> controls trace export. This can mislead operators.</p>
+        </div>
+        <div class="dim-block">
+          <h4>What's Working Well</h4>
+          <div class="working-item">OTLP is supported and configurable for both traces and metrics without code changes — via ConfigMap patching alone.</div>
+          <div class="working-item mt-4">Configuration is Kubernetes-native (ConfigMap-based), which fits naturally into GitOps and Helm-based deployment workflows.</div>
+          <div class="working-item mt-4">Official documentation at <code>tekton.dev/docs/pipelines/metrics/</code> covers both Prometheus and OTLP options with clear examples.</div>
+        </div>
+        <div class="dim-block">
+          <h4>Opportunities</h4>
+          <div class="opportunity-list">
+            <div class="opportunity-item">Adding OTLP log export (even as opt-in) would complete the three-signal story and enable log-trace correlation.</div>
+            <div class="opportunity-item">Correcting or removing the misleading <code>tracing-protocol</code> / <code>tracing-endpoint</code> keys from the <code>config-observability</code> <code>_example</code> section would prevent operator confusion.</div>
+            <div class="opportunity-item">Supporting <code>OTEL_EXPORTER_OTLP_ENDPOINT</code> as an environment variable would align with standard OTel SDK configuration patterns and improve portability.</div>
+          </div>
+        </div>
+      </div>
+    </details>
+
+    <!-- ── 2. Semantic Conventions ── -->
+    <details class="dim-card">
+      <summary class="dim-summary">
+        <span class="dim-num">02</span>
+        <span class="dim-title">Semantic Conventions</span>
+        <span class="level-badge lvl-1">Level 1 — OTel-Aligned</span>
+        <span class="dim-chevron">▶</span>
+      </summary>
+      <div class="dim-body">
+        <div class="dim-block">
+          <h4>What We Observed</h4>
+          <p>Span-level attributes use custom, non-namespaced keys: <code>taskrun</code>, <code>namespace</code>, and <code>pipelinerun</code>. These appear only on root spans — child spans (<code>prepare</code>, <code>createPod</code>, <code>reconcile</code>, etc.) carry <strong>no attributes at all</strong>. The schema URL is set to <code>https://opentelemetry.io/schemas/1.12.0</code> (early 2023) while the current stable version is v1.27.0. Instrumentation scope versions report <code>"unknown"</code>.</p>
+          <p class="mt-4">Metric names follow a custom <code>tekton_pipelines_controller_*</code> convention with no OTel semconv alignment. All Tekton metrics have <code>unit: null</code>. The <code>_milliseconds</code> suffix on <code>taskruns_pod_latency_milliseconds</code> is inconsistent with the <code>_seconds</code> suffix used on other duration metrics.</p>
+        </div>
+        <div class="dim-block">
+          <h4>What's Working Well</h4>
+          <div class="working-item">The schema URL is present on resource spans — a positive signal that Tekton is aware of the semconv versioning model.</div>
+          <div class="working-item mt-4">No deprecated OTel attributes are used in Tekton's own spans (the deprecated HTTP attributes observed come from the separate <code>otel-eval-backend</code> service).</div>
+          <div class="working-item mt-4">Infrastructure metrics (<code>kn_workqueue_*</code>, <code>go_*</code>) were recently migrated from OpenCensus and now align better with standard naming conventions.</div>
+        </div>
+        <div class="dim-block">
+          <h4>Opportunities</h4>
+          <div class="opportunity-list">
+            <div class="opportunity-item">Replacing <code>namespace</code> with <code>k8s.namespace.name</code> and introducing namespaced keys like <code>tekton.taskrun.name</code> and <code>tekton.pipelinerun.name</code> would align with OTel conventions while preserving Tekton-specific semantics.</div>
+            <div class="opportunity-item">Adding attributes to child spans (e.g., <code>k8s.namespace.name</code> on <code>createPod</code>) would improve filtering and querying in observability backends.</div>
+            <div class="opportunity-item">Updating the semconv import from <code>v1.12.0</code> to <code>v1.27.0</code> would ensure any future semconv-aligned attributes start from a current baseline.</div>
+            <div class="opportunity-item">Setting metric units (<code>s</code> for seconds, <code>ms</code> for milliseconds, <code>{taskrun}</code> for counts) would make metrics self-documenting and improve compatibility with OTel-aware backends.</div>
+            <div class="opportunity-item">Setting the instrumentation scope version to the Tekton release version (e.g., <code>v1.12.0</code>) would improve telemetry provenance.</div>
+          </div>
+        </div>
+        <div class="dim-block">
+          <h4>Concrete Examples</h4>
+          <ul>
+            <li>Current: <code>taskrun = "call-eval-backend-run-26"</code> → Suggested: <code>tekton.taskrun.name = "call-eval-backend-run-26"</code></li>
+            <li>Current: <code>namespace = "default"</code> → Suggested: <code>k8s.namespace.name = "default"</code></li>
+            <li>Current: <code>pipelinerun = "eval-pipeline-run-7"</code> → Suggested: <code>tekton.pipelinerun.name = "eval-pipeline-run-7"</code></li>
+            <li>Metric unit gap: <code>tekton_pipelines_controller_taskrun_duration_seconds</code> has <code>unit: null</code> → should be <code>unit: "s"</code></li>
+          </ul>
+        </div>
+      </div>
+    </details>
+
+    <!-- ── 3. Resource Attributes & Configuration ── -->
+    <details class="dim-card">
+      <summary class="dim-summary">
+        <span class="dim-num">03</span>
+        <span class="dim-title">Resource Attributes &amp; Configuration</span>
+        <span class="level-badge lvl-1">Level 1 — OTel-Aligned</span>
+        <span class="dim-chevron">▶</span>
+      </summary>
+      <div class="dim-body">
+        <div class="dim-block">
+          <h4>What We Observed</h4>
+          <p>Tekton's <code>createTracerProvider</code> function sets only <code>service.name</code> natively (values: <code>"taskrun-reconciler"</code> and <code>"pipelinerun-reconciler"</code>). The Go OTel SDK does not auto-populate <code>telemetry.sdk.language</code>, <code>telemetry.sdk.name</code>, <code>telemetry.sdk.version</code>, <code>service.version</code>, or <code>service.instance.id</code> when using a custom resource constructor. No <code>OTEL_*</code> environment variables are set on controller pods — all configuration is via ConfigMap.</p>
+          <p class="mt-4">Identity is inconsistent across signals: traces use <code>service.name: "taskrun-reconciler"</code> while metrics use <code>service.name: "tekton-pipelines-controller"</code> (assigned by the Prometheus receiver from the job label). This prevents cross-signal correlation by <code>service.name</code>.</p>
+        </div>
+        <div class="dim-block">
+          <h4>What's Working Well</h4>
+          <div class="working-item"><code>service.name</code> is set natively on traces — the minimum required for signal routing in most backends.</div>
+          <div class="working-item mt-4">The ConfigMap-based configuration approach is idiomatic for Kubernetes operators and integrates naturally with GitOps workflows.</div>
+          <div class="working-item mt-4">After collector enrichment via the <code>k8sattributes</code> processor, rich Kubernetes metadata is added: <code>k8s.pod.name</code>, <code>k8s.namespace.name</code>, <code>k8s.deployment.name</code>, <code>k8s.node.name</code>, and more.</div>
+        </div>
+        <div class="dim-block">
+          <h4>Opportunities</h4>
+          <div class="opportunity-list">
+            <div class="opportunity-item">Using <code>resource.Default()</code> instead of <code>resource.NewWithAttributes()</code> would automatically populate <code>telemetry.sdk.language</code>, <code>telemetry.sdk.name</code>, and <code>telemetry.sdk.version</code> from the Go OTel SDK.</div>
+            <div class="opportunity-item">Adding <code>service.version</code> from the release label (<code>v1.12.0</code>) would allow operators to filter telemetry by Tekton version — especially useful during upgrades.</div>
+            <div class="opportunity-item">Aligning <code>service.name</code> between traces and metrics (e.g., both using <code>"tekton-pipelines-controller"</code>) would enable cross-signal correlation without collector-side join logic.</div>
+            <div class="opportunity-item">Supporting <code>OTEL_SERVICE_NAME</code> and <code>OTEL_RESOURCE_ATTRIBUTES</code> environment variables would allow operators to override resource attributes using standard OTel patterns.</div>
+          </div>
+        </div>
+        <div class="dim-block">
+          <h4>Concrete Examples</h4>
+          <ul>
+            <li>Traces: <code>service.name = "taskrun-reconciler"</code></li>
+            <li>Metrics: <code>service.name = "tekton-pipelines-controller"</code> (set by Prometheus receiver)</li>
+            <li>Missing natively: <code>service.version</code>, <code>service.instance.id</code>, <code>telemetry.sdk.language</code>, <code>telemetry.sdk.name</code>, <code>telemetry.sdk.version</code></li>
+          </ul>
+        </div>
+      </div>
+    </details>
+
+    <!-- ── 4. Trace Modeling & Context Propagation ── -->
+    <details class="dim-card">
+      <summary class="dim-summary">
+        <span class="dim-num">04</span>
+        <span class="dim-title">Trace Modeling &amp; Context Propagation</span>
+        <span class="level-badge lvl-2">Level 2 — OTel-Native</span>
+        <span class="dim-chevron">▶</span>
+      </summary>
+      <div class="dim-body">
+        <div class="dim-block">
+          <h4>What We Observed</h4>
+          <p>Tekton produces rich, hierarchical span trees that accurately represent the CI/CD lifecycle. A typical TaskRun trace includes: <code>TaskRun:Reconciler</code> → <code>TaskRun:ReconcileKind</code> → <code>prepare</code>, <code>reconcile</code> (→ <code>createPod</code>), <code>finishReconcileUpdateEmitEvents</code>, and <code>durationAndCountMetrics</code>. Multiple reconcile loops for the same TaskRun appear within a single trace, which is correct behavior.</p>
+          <p class="mt-4">W3C Trace Context propagation is implemented via <code>propagation.TraceContext{}</code>. Inbound context propagation is supported via the <code>tekton.dev/taskrunSpanContext</code> annotation on TaskRun objects. Outbound propagation stores the W3C <code>traceparent</code> in pod annotations, enabling downstream workloads to continue the trace. All spans use <code>kind=INTERNAL</code>.</p>
+        </div>
+        <div class="dim-block">
+          <h4>What's Working Well</h4>
+          <div class="working-item">The <code>tekton.dev/taskrunSpanContext</code> annotation mechanism is an elegant solution for propagating trace context across the Kubernetes controller boundary — acknowledging the architectural reality that CI/CD work happens in separate pods.</div>
+          <div class="working-item mt-4">The trace hierarchy is coherent and follows the actual code execution path, making traces immediately useful for debugging slow or failing pipelines.</div>
+          <div class="working-item mt-4">Multiple reconcile loops for the same TaskRun are correctly grouped under a single root span, providing a complete per-TaskRun trace.</div>
+        </div>
+        <div class="dim-block">
+          <h4>Opportunities</h4>
+          <div class="opportunity-list">
+            <div class="opportunity-item">Considering <code>SpanKind.SERVER</code> for root reconciler spans (<code>TaskRun:Reconciler</code>, <code>PipelineRun:Reconciler</code>) would better reflect that these spans represent the entry point of handling a Kubernetes event.</div>
+            <div class="opportunity-item">Adding documentation and tooling guidance for workloads that want to consume the <code>tekton.dev/taskrunSpanContext</code> pod annotation would make end-to-end tracing more accessible.</div>
+            <div class="opportunity-item">Supporting the standard <code>traceparent</code> annotation (not just <code>tekton.dev/taskrunSpanContext</code>) on TaskRun objects would allow external systems to inject trace context using the standard W3C header name.</div>
+          </div>
+        </div>
+        <div class="dim-block">
+          <h4>Concrete Examples — Span Tree</h4>
+          <pre style="background:#f0f4f8; border-radius:8px; padding:14px 16px; font-size:0.82rem; overflow-x:auto; border:1px solid #d0dde8; color:#1a2332; line-height:1.7;">TaskRun:Reconciler (root, INTERNAL)          ← taskrun=..., namespace=...
+  └── TaskRun:ReconcileKind (INTERNAL)
+        ├── prepare (INTERNAL)
+        │     └── updateTaskRunWithDefaultWorkspaces
+        ├── reconcile (INTERNAL)
+        │     └── createPod (INTERNAL)
+        ├── finishReconcileUpdateEmitEvents (INTERNAL)
+        │     └── updateLabelsAndAnnotations
+        └── durationAndCountMetrics (INTERNAL)</pre>
+        </div>
+      </div>
+    </details>
+
+    <!-- ── 5. Multi-Signal Observability ── -->
+    <details class="dim-card">
+      <summary class="dim-summary">
+        <span class="dim-num">05</span>
+        <span class="dim-title">Multi-Signal Observability</span>
+        <span class="level-badge lvl-1">Level 1 — OTel-Aligned</span>
+        <span class="dim-chevron">▶</span>
+      </summary>
+      <div class="dim-body">
+        <div class="dim-block">
+          <h4>What We Observed</h4>
+          <p>Two signals are present (traces and metrics) but use different collection paths and have inconsistent resource attributes that prevent correlation. Traces use OTLP push while metrics use Prometheus pull — the split means the two signals cannot easily be correlated by the collector. Logs are entirely absent from the OTel signal.</p>
+          <p class="mt-4">Cross-signal correlation is not possible: traces use <code>service.name: "taskrun-reconciler"</code> while metrics use <code>service.name: "tekton-pipelines-controller"</code>. Controller logs contain <code>knative.dev/traceid</code> which is a UUID-format internal Knative ID — completely separate from OTel hex-format trace IDs.</p>
+        </div>
+        <div class="dim-block">
+          <h4>What's Working Well</h4>
+          <div class="working-item">Both traces and metrics are available and provide genuine value independently — traces for debugging individual runs, metrics for aggregate CI/CD performance monitoring.</div>
+          <div class="working-item mt-4">The <code>tekton.dev/taskrunSpanContext</code> pod annotation provides a theoretical path for pod-level workloads to correlate with the controller trace, enabling end-to-end tracing in OTel-aware workloads.</div>
+        </div>
+        <div class="dim-block">
+          <h4>Opportunities</h4>
+          <div class="opportunity-list">
+            <div class="opportunity-item">Aligning <code>service.name</code> between traces and metrics would be the highest-impact single change for enabling cross-signal correlation.</div>
+            <div class="opportunity-item">Adding the OTel <code>traceId</code> and <code>spanId</code> to structured log output (even via stdout) would enable log-trace correlation without requiring full OTLP log export.</div>
+            <div class="opportunity-item">Introducing OTLP log export (opt-in) would complete the three-signal story and enable full observability in OTel-native backends like Grafana or Honeycomb.</div>
+            <div class="opportunity-item">Unifying the collection model (e.g., supporting OTLP push for metrics as the default) would simplify collector configuration and enable cross-signal enrichment at the collector level.</div>
+          </div>
+        </div>
+      </div>
+    </details>
+
+    <!-- ── 6. Audience & Signal Quality ── -->
+    <details class="dim-card">
+      <summary class="dim-summary">
+        <span class="dim-num">06</span>
+        <span class="dim-title">Audience &amp; Signal Quality</span>
+        <span class="level-badge lvl-2">Level 2 — OTel-Native</span>
+        <span class="dim-chevron">▶</span>
+      </summary>
+      <div class="dim-body">
+        <div class="dim-block">
+          <h4>What We Observed</h4>
+          <p>The majority of span names reflect meaningful CI/CD lifecycle operations: <code>TaskRun:Reconciler</code>, <code>createPod</code>, <code>prepare</code>, <code>stopSidecars</code>, <code>resolvePipelineState</code>, <code>runNextSchedulableTask</code>, <code>createTaskRun</code>. A minority of spans are implementation-specific: <code>finishReconcileUpdateEmitEvents</code>, <code>updateLabelsAndAnnotations</code>, <code>durationAndCountMetrics</code>, <code>updatePipelineRunStatusFromInformer</code>.</p>
+          <p class="mt-4">Tekton-specific metrics are directly actionable for CI/CD operators: duration histograms with <code>status</code> labels enable SLA monitoring; running count gauges enable capacity monitoring; pod latency metrics enable scheduling performance monitoring. Tracing is disabled by default; metrics are on by default.</p>
+        </div>
+        <div class="dim-block">
+          <h4>What's Working Well</h4>
+          <div class="working-item">The Tekton-specific metrics (<code>tekton_pipelines_controller_taskrun_duration_seconds</code>, <code>_pipelinerun_duration_seconds</code>, <code>_taskruns_pod_latency_milliseconds</code>) directly measure CI/CD performance and are immediately useful for SLA monitoring and capacity planning.</div>
+          <div class="working-item mt-4">The <code>metrics.taskrun.level</code> and <code>metrics.pipelinerun.level</code> settings allow operators to control metric cardinality — important for high-volume Tekton deployments.</div>
+          <div class="working-item mt-4">The trace volume is appropriate: ~8-10 spans per reconcile loop, ~30-40 spans per complete TaskRun lifecycle — manageable without overwhelming backends.</div>
+        </div>
+        <div class="dim-block">
+          <h4>Opportunities</h4>
+          <div class="opportunity-list">
+            <div class="opportunity-item">Renaming or removing the <code>durationAndCountMetrics</code> span would reduce noise — this is an internal implementation detail, not a meaningful CI/CD operation.</div>
+            <div class="opportunity-item">Enabling tracing by default (or providing a simpler one-step enablement path) would make traces more accessible to operators who don't know to configure <code>config-tracing</code>.</div>
+            <div class="opportunity-item">Adding attributes to child spans (e.g., pod name on <code>createPod</code>, task name on <code>runNextSchedulableTask</code>) would significantly improve the diagnostic value of individual spans.</div>
+          </div>
+        </div>
+        <div class="dim-block">
+          <h4>Concrete Examples — Key Metrics</h4>
+          <ul>
+            <li><code>tekton_pipelines_controller_taskrun_duration_seconds</code> — histogram with <code>status</code>, <code>namespace</code>, <code>task</code> labels</li>
+            <li><code>tekton_pipelines_controller_pipelinerun_duration_seconds</code> — histogram with <code>status</code>, <code>namespace</code>, <code>pipeline</code> labels</li>
+            <li><code>tekton_pipelines_controller_taskruns_pod_latency_milliseconds</code> — scheduling latency histogram</li>
+            <li><code>tekton_pipelines_controller_running_taskruns</code> — gauge for capacity monitoring</li>
+            <li><code>tekton_pipelines_controller_running_pipelineruns_waiting_on_pipeline_resolution</code> — resolution bottleneck gauge</li>
+          </ul>
+        </div>
+      </div>
+    </details>
+
+    <!-- ── 7. Stability & Change Management ── -->
+    <details class="dim-card">
+      <summary class="dim-summary">
+        <span class="dim-num">07</span>
+        <span class="dim-title">Stability &amp; Change Management</span>
+        <span class="level-badge lvl-2">Level 2 — OTel-Native</span>
+        <span class="dim-chevron">▶</span>
+      </summary>
+      <div class="dim-body">
+        <div class="dim-block">
+          <h4>What We Observed</h4>
+          <p>Tekton has dedicated observability documentation at <code>tekton.dev/docs/pipelines/metrics/</code> and a dedicated migration guide <code>tekton.dev/docs/pipelines/metrics-migration-otel/</code> for the OpenCensus → OpenTelemetry transition. All core Tekton metrics are explicitly labeled <strong>"experimental"</strong> in the official documentation. Schema URL is present on traces (<code>v1.12.0</code>, outdated) and metrics (<code>v1.18.0</code>, set by the collector). No formal telemetry stability contract exists.</p>
+        </div>
+        <div class="dim-block">
+          <h4>What's Working Well</h4>
+          <div class="working-item">The OpenCensus → OTel migration guide (PR #9043) is exemplary: it provides explicit breaking change tables with old-name → new-name mappings, impact levels (HIGH/MEDIUM/LOW), and action items for operators.</div>
+          <div class="working-item mt-4">The "experimental" label on all metrics is honest about stability — operators know not to rely on metric names without checking for breaking changes.</div>
+          <div class="working-item mt-4">Configuration options are documented in both ConfigMap <code>_example</code> sections and official docs, giving operators two discovery paths.</div>
+        </div>
+        <div class="dim-block">
+          <h4>Opportunities</h4>
+          <div class="opportunity-list">
+            <div class="opportunity-item">Introducing a formal telemetry stability contract (e.g., "metrics marked stable will not be renamed without a deprecation period") would give operators confidence to build dashboards and alerts on Tekton metrics.</div>
+            <div class="opportunity-item">Updating the trace schema URL from <code>v1.12.0</code> to <code>v1.27.0</code> would ensure the schema URL reflects current conventions.</div>
+            <div class="opportunity-item">Correcting the documentation confusion between <code>config-observability</code> (which shows <code>tracing-protocol</code>/<code>tracing-endpoint</code> in its example but does NOT control trace export) and <code>config-tracing</code> (which does) would prevent a significant operational footgun.</div>
+            <div class="opportunity-item">Removing the Jaeger-specific default endpoint (<code>http://jaeger-collector.jaeger.svc.cluster.local:4318/v1/traces</code>) from <code>config-tracing</code> in favor of a generic example would reduce backend coupling in documentation.</div>
+          </div>
+        </div>
+      </div>
+    </details>
+
+  </div><!-- /dim-list -->
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════════
+     KEY TAKEAWAYS
+════════════════════════════════════════════════════════════════════ -->
+<section>
+  <h2 class="section-title"><span class="icon">💡</span> Key Takeaways</h2>
+  <div class="takeaways-grid">
+
+    <div class="takeaway-card strengths">
+      <h3>Strengths</h3>
+      <ul>
+        <li><strong>Rich trace trees for CI/CD lifecycle</strong> — hierarchical traces accurately represent TaskRun/PipelineRun reconciliation and are immediately useful for debugging.</li>
+        <li><strong>Thoughtful context propagation design</strong> — the <code>tekton.dev/taskrunSpanContext</code> annotation elegantly bridges the controller-to-pod boundary for end-to-end tracing.</li>
+        <li><strong>Exemplary migration documentation</strong> — the OpenCensus → OTel migration guide with explicit breaking change tables sets a high bar for telemetry change communication.</li>
+        <li><strong>Actionable CI/CD metrics</strong> — duration histograms, running counts, and pod latency metrics directly measure pipeline performance and are immediately useful for SLA monitoring.</li>
+        <li><strong>Flexible cardinality control</strong> — <code>metrics.taskrun.level</code> and <code>metrics.pipelinerun.level</code> settings allow operators to manage metric volume in high-traffic deployments.</li>
+      </ul>
+    </div>
+
+    <div class="takeaway-card improvements">
+      <h3>Priority Improvements</h3>
+      <ul>
+        <li><strong>Align <code>service.name</code> across signals</strong> — the single highest-impact change for enabling cross-signal correlation. Traces use <code>"taskrun-reconciler"</code>; metrics use <code>"tekton-pipelines-controller"</code>.</li>
+        <li><strong>Add <code>service.version</code> and <code>telemetry.sdk.*</code></strong> — use <code>resource.Default()</code> to auto-populate SDK attributes and add version from the release label.</li>
+        <li><strong>Fix the <code>config-observability</code> documentation footgun</strong> — the misleading <code>tracing-protocol</code>/<code>tracing-endpoint</code> keys in <code>config-observability</code> cause operators to misconfigure tracing.</li>
+        <li><strong>Namespace span and metric attribute keys</strong> — replace <code>taskrun</code> → <code>tekton.taskrun.name</code>, <code>namespace</code> → <code>k8s.namespace.name</code> to align with OTel conventions.</li>
+        <li><strong>Set metric units</strong> — all Tekton metrics have <code>unit: null</code>; adding <code>"s"</code>, <code>"ms"</code>, and <code>"{taskrun}"</code> units is a low-effort, high-value improvement.</li>
+      </ul>
+    </div>
+
+    <div class="takeaway-card observations">
+      <h3>Notable Observations</h3>
+      <ul>
+        <li><strong><code>knative.dev/traceid</code> is NOT an OTel trace ID</strong> — it's a UUID-format internal Knative reconciler identifier. Operators expecting log-trace correlation will be misled.</li>
+        <li><strong>The <code>config-tracing</code> vs <code>config-observability</code> split is an operational footgun</strong> — configuring tracing via <code>config-observability</code> (which appears to support it) silently does nothing for OTLP traces.</li>
+        <li><strong>Semconv v1.12.0 is ~3 years outdated</strong> — the tracing code imports <code>go.opentelemetry.io/otel/semconv/v1.12.0</code>; current stable is v1.27.0.</li>
+        <li><strong>The pod annotation is a well-designed interface</strong> — <code>tekton.dev/taskrunSpanContext: {"traceparent":"00-...-01"}</code> stores the W3C trace context, enabling OTel-aware workloads to continue the trace.</li>
+        <li><strong>Instrumentation scope version is <code>"unknown"</code></strong> — setting it to the Tekton release version would improve telemetry provenance.</li>
+      </ul>
+    </div>
+
+  </div>
+</section>
+
+</main>
+
+<!-- ═══════════════════════════════════════════════════════════════════
+     FOOTER
+════════════════════════════════════════════════════════════════════ -->
+<footer class="site-footer">
+  <div class="container">
+    <div class="footer-block">
+      <h4>Methodology</h4>
+      <ul>
+        <li>OTel Collector v0.150.1 with file exporter in a kind cluster (<code>otel-eval-tekton</code>)</li>
+        <li>17 JSONL trace batches; 160 JSONL metric batches; 0 OTLP log records</li>
+        <li>30 TaskRuns (incl. 5 with external trace context) + 8 PipelineRuns generated</li>
+        <li>Source reviewed: <code>pkg/tracing/tracing.go</code>, <code>pkg/reconciler/taskrun/tracing.go</code></li>
+        <li>Semconv checked against OTel semconv v1.27.0 (current stable)</li>
+      </ul>
+    </div>
+    <div class="footer-block">
+      <h4>References</h4>
+      <ul>
+        <li><a href="https://github.com/tektoncd/pipeline" target="_blank">github.com/tektoncd/pipeline</a></li>
+        <li><a href="https://tekton.dev/docs/pipelines/metrics/" target="_blank">tekton.dev/docs/pipelines/metrics/</a></li>
+        <li><a href="https://tekton.dev/docs/pipelines/metrics-migration-otel/" target="_blank">OTel Migration Guide</a></li>
+        <li><a href="https://opentelemetry.io/docs/specs/semconv/" target="_blank">OTel Semantic Conventions v1.27.0</a></li>
+      </ul>
+    </div>
+    <div class="footer-block" style="max-width:280px;">
+      <h4>About this Report</h4>
+      <p>Generated by the OpenTelemetry Maturity Evaluation pipeline for CNCF projects. The maturity model assesses 7 dimensions on a 0–3 scale, from basic instrumentation to fully optimized OTel support.</p>
+    </div>
+  </div>
+</footer>
+
+<!-- ═══════════════════════════════════════════════════════════════════
+     CHART.JS RADAR
+════════════════════════════════════════════════════════════════════ -->
+<script>
+(function () {
+  const ctx = document.getElementById('radarChart').getContext('2d');
+
+  const labels = [
+    'Integration\nSurface',
+    'Semantic\nConventions',
+    'Resource Attrs\n& Config',
+    'Trace Modeling\n& Propagation',
+    'Multi-Signal\nObservability',
+    'Audience &\nSignal Quality',
+    'Stability &\nChange Mgmt'
+  ];
+
+  const scores = [2, 1, 1, 2, 1, 2, 2];
+
+  Chart.defaults.font.family = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+
+  new Chart(ctx, {
+    type: 'radar',
+    data: {
+      labels: labels,
+      datasets: [{
+        label: 'Tekton Pipeline v1.12.0',
+        data: scores,
+        fill: true,
+        backgroundColor: 'rgba(30, 107, 170, 0.18)',
+        borderColor: 'rgba(30, 107, 170, 0.85)',
+        pointBackgroundColor: 'rgba(30, 107, 170, 1)',
+        pointBorderColor: '#fff',
+        pointHoverBackgroundColor: '#fff',
+        pointHoverBorderColor: 'rgba(30, 107, 170, 1)',
+        borderWidth: 2.5,
+        pointRadius: 5,
+        pointHoverRadius: 7,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: true,
+      plugins: {
+        legend: {
+          display: true,
+          position: 'bottom',
+          labels: {
+            font: { size: 12 },
+            color: '#2a3f55',
+            padding: 16,
+          }
+        },
+        tooltip: {
+          callbacks: {
+            label: function(context) {
+              const levelNames = ['Instrumented', 'OTel-Aligned', 'OTel-Native', 'OTel-Optimized'];
+              const val = context.raw;
+              return ` Level ${val} — ${levelNames[val]}`;
+            }
+          }
+        }
+      },
+      scales: {
+        r: {
+          min: 0,
+          max: 3,
+          stepSize: 1,
+          ticks: {
+            stepSize: 1,
+            callback: function(value) {
+              const names = ['0\nInstrumented', '1\nAligned', '2\nNative', '3\nOptimized'];
+              return names[value] || value;
+            },
+            font: { size: 10 },
+            color: '#7a9bb5',
+            backdropColor: 'transparent',
+          },
+          pointLabels: {
+            font: { size: 11, weight: '600' },
+            color: '#0f2c4a',
+            padding: 8,
+          },
+          grid: {
+            color: 'rgba(0,0,0,0.08)',
+          },
+          angleLines: {
+            color: 'rgba(0,0,0,0.1)',
+          }
+        }
+      }
+    }
+  });
+})();
+</script>
+
+</body>
+</html>
