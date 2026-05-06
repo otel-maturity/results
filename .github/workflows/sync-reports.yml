@@ -1,0 +1,60 @@
+name: Sync reports to otel-maturity.io
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout results
+        uses: actions/checkout@v4
+        with:
+          path: results
+
+      # Requires a repo secret OTEL_MATURITY_IO_TOKEN: a PAT (or GitHub App
+      # token) with contents:write and pull-requests:write on
+      # otel-maturity/otel-maturity.io. The default GITHUB_TOKEN cannot push
+      # to or open PRs against a different repository.
+      - name: Checkout otel-maturity.io
+        uses: actions/checkout@v4
+        with:
+          repository: otel-maturity/otel-maturity.io
+          path: site
+          token: ${{ secrets.OTEL_MATURITY_IO_TOKEN }}
+
+      - name: Copy report files
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          copied=0
+          for dir in results/*/; do
+            project=$(basename "$dir")
+            report="${dir}report.html"
+            [ -f "$report" ] || continue
+            cp "$report" "site/${project}-report.html"
+            echo "copied ${project}/report.html -> ${project}-report.html"
+            copied=$((copied + 1))
+          done
+          echo "total reports copied: $copied"
+
+      - name: Create pull request
+        uses: peter-evans/create-pull-request@v6
+        with:
+          path: site
+          token: ${{ secrets.OTEL_MATURITY_IO_TOKEN }}
+          branch: sync-reports
+          delete-branch: true
+          commit-message: "sync project reports from otel-maturity/results"
+          title: "Sync project reports from otel-maturity/results"
+          body: |
+            Automated sync of `<project>/report.html` files from
+            [otel-maturity/results](https://github.com/otel-maturity/results)
+            to `<project>-report.html` in this repo.
+
+            Triggered by commit ${{ github.sha }} on `main`.
