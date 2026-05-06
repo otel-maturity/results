@@ -1,0 +1,743 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Traefik — OpenTelemetry Maturity Report</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, sans-serif;
+            background: #f8f9fc;
+            color: #1a202c;
+            line-height: 1.6;
+        }
+
+        a { color: #3182ce; text-decoration: none; }
+        a:hover { text-decoration: underline; }
+
+        /* ── Header ── */
+        .site-header {
+            background: linear-gradient(135deg, #1a365d 0%, #2a4a7f 60%, #3182ce 100%);
+            color: white;
+            padding: 48px 32px 40px;
+        }
+        .header-inner { max-width: 960px; margin: 0 auto; }
+        .project-badge {
+            display: inline-flex; align-items: center; gap: 8px;
+            background: rgba(255,255,255,0.15); border-radius: 20px;
+            padding: 4px 14px; font-size: 13px; margin-bottom: 16px;
+        }
+        .project-badge .dot { width: 8px; height: 8px; background: #68d391; border-radius: 50%; }
+        h1 { font-size: 2.2rem; font-weight: 700; margin-bottom: 8px; }
+        .header-meta { font-size: 14px; opacity: 0.8; margin-top: 12px; }
+        .header-meta span { margin-right: 20px; }
+
+        /* ── Layout ── */
+        .container { max-width: 960px; margin: 0 auto; padding: 40px 24px; }
+
+        /* ── Section titles ── */
+        .section-title {
+            font-size: 1.3rem; font-weight: 700; color: #1a365d;
+            border-bottom: 2px solid #bee3f8; padding-bottom: 8px; margin-bottom: 24px;
+        }
+
+        /* ── Card ── */
+        .card {
+            background: white; border-radius: 12px;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.08); padding: 28px;
+            margin-bottom: 28px;
+        }
+
+        /* ── Radar chart ── */
+        .chart-wrap {
+            display: flex; justify-content: center; align-items: center;
+            padding: 16px 0;
+        }
+        .chart-wrap canvas { max-width: 480px; max-height: 480px; }
+
+        /* ── Score legend ── */
+        .score-legend {
+            display: flex; justify-content: center; gap: 24px; flex-wrap: wrap;
+            margin-top: 16px; font-size: 13px;
+        }
+        .score-legend-item { display: flex; align-items: center; gap: 6px; }
+        .score-legend-dot { width: 12px; height: 12px; border-radius: 50%; }
+
+        /* ── Summary table ── */
+        .summary-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+        .summary-table th {
+            background: #ebf8ff; text-align: left; padding: 10px 14px;
+            font-weight: 600; color: #2b6cb0; border-bottom: 2px solid #bee3f8;
+        }
+        .summary-table td { padding: 10px 14px; border-bottom: 1px solid #e2e8f0; vertical-align: top; }
+        .summary-table tr:last-child td { border-bottom: none; }
+        .summary-table tr:hover td { background: #f7fafc; }
+
+        .level-badge {
+            display: inline-block; padding: 2px 10px; border-radius: 12px;
+            font-size: 12px; font-weight: 700; white-space: nowrap;
+        }
+        .level-0 { background: #fff5f5; color: #c53030; border: 1px solid #feb2b2; }
+        .level-1 { background: #fffaf0; color: #c05621; border: 1px solid #fbd38d; }
+        .level-2 { background: #ebf8ff; color: #2b6cb0; border: 1px solid #bee3f8; }
+        .level-3 { background: #f0fff4; color: #276749; border: 1px solid #9ae6b4; }
+
+        /* ── Signals ── */
+        .signals-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+        .signal-card {
+            border-radius: 10px; padding: 20px; text-align: center;
+            border: 1px solid #e2e8f0;
+        }
+        .signal-card.flowing { background: #f0fff4; border-color: #9ae6b4; }
+        .signal-card.partial { background: #fffaf0; border-color: #fbd38d; }
+        .signal-card.not-flowing { background: #fff5f5; border-color: #feb2b2; }
+        .signal-icon { font-size: 2rem; margin-bottom: 8px; }
+        .signal-name { font-weight: 700; font-size: 15px; margin-bottom: 4px; }
+        .signal-status { font-size: 12px; font-weight: 600; }
+        .signal-card.flowing .signal-status { color: #276749; }
+        .signal-card.partial .signal-status { color: #c05621; }
+        .signal-card.not-flowing .signal-status { color: #c53030; }
+        .signal-detail { font-size: 12px; color: #718096; margin-top: 6px; }
+
+        /* ── Dimension sections ── */
+        .dimension-section { margin-bottom: 20px; }
+        details { border-radius: 10px; border: 1px solid #e2e8f0; overflow: hidden; }
+        summary {
+            display: flex; align-items: center; gap: 12px;
+            padding: 16px 20px; cursor: pointer; background: white;
+            list-style: none; user-select: none;
+            transition: background 0.15s;
+        }
+        summary:hover { background: #f7fafc; }
+        summary::-webkit-details-marker { display: none; }
+        .summary-arrow {
+            margin-left: auto; color: #718096; transition: transform 0.2s;
+        }
+        details[open] .summary-arrow { transform: rotate(90deg); }
+        .dim-title { font-weight: 700; font-size: 15px; flex: 1; }
+        .dim-summary { font-size: 13px; color: #718096; }
+
+        .dim-content {
+            padding: 24px 24px 20px; background: #fafafa;
+            border-top: 1px solid #e2e8f0;
+        }
+        .dim-content h4 {
+            font-size: 13px; font-weight: 700; text-transform: uppercase;
+            letter-spacing: 0.05em; color: #4a5568; margin: 16px 0 8px;
+        }
+        .dim-content h4:first-child { margin-top: 0; }
+        .dim-content p { font-size: 14px; color: #4a5568; margin-bottom: 8px; }
+        .dim-content ul { padding-left: 20px; }
+        .dim-content li { font-size: 14px; color: #4a5568; margin-bottom: 4px; }
+        code {
+            background: #edf2f7; padding: 1px 5px; border-radius: 4px;
+            font-family: 'SFMono-Regular', Consolas, monospace; font-size: 12px;
+        }
+
+        .checklist { list-style: none; padding: 0; }
+        .checklist li { display: flex; gap: 8px; font-size: 13px; padding: 3px 0; }
+        .check-pass { color: #276749; font-weight: 700; }
+        .check-warn { color: #c05621; font-weight: 700; }
+        .check-fail { color: #c53030; font-weight: 700; }
+
+        .opportunity-box {
+            background: #fffaf0; border-left: 3px solid #f6ad55;
+            padding: 12px 16px; border-radius: 0 8px 8px 0;
+            margin: 12px 0; font-size: 13px; color: #744210;
+        }
+
+        /* ── Key takeaways ── */
+        .takeaways-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        .takeaway-box { border-radius: 10px; padding: 20px; }
+        .takeaway-box.strengths { background: #f0fff4; border: 1px solid #9ae6b4; }
+        .takeaway-box.improvements { background: #fffaf0; border: 1px solid #fbd38d; }
+        .takeaway-box.observations { background: #ebf8ff; border: 1px solid #bee3f8; }
+        .takeaway-box h3 { font-size: 14px; font-weight: 700; margin-bottom: 12px; }
+        .takeaway-box.strengths h3 { color: #276749; }
+        .takeaway-box.improvements h3 { color: #c05621; }
+        .takeaway-box.observations h3 { color: #2b6cb0; }
+        .takeaway-box ul { padding-left: 18px; }
+        .takeaway-box li { font-size: 13px; margin-bottom: 6px; color: #4a5568; }
+
+        /* ── Footer ── */
+        .site-footer {
+            background: #1a202c; color: #a0aec0;
+            padding: 32px; text-align: center; font-size: 13px; margin-top: 40px;
+        }
+        .site-footer a { color: #63b3ed; }
+
+        @media (max-width: 640px) {
+            .signals-grid { grid-template-columns: 1fr; }
+            .takeaways-grid { grid-template-columns: 1fr; }
+            h1 { font-size: 1.6rem; }
+        }
+    </style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════════ HEADER -->
+<header class="site-header">
+    <div class="header-inner">
+        <div class="project-badge">
+            <span class="dot"></span>
+            CNCF Graduated Project
+        </div>
+        <h1>Traefik</h1>
+        <p style="font-size:1.1rem; opacity:0.9; margin-top:6px;">
+            OpenTelemetry Support Maturity Report
+        </p>
+        <p style="font-size:0.95rem; opacity:0.75; margin-top:8px;">
+            Cloud-native HTTP reverse proxy and Kubernetes Ingress Controller with automatic service discovery
+        </p>
+        <div class="header-meta">
+            <span>📦 Version: <strong>v3.6.15</strong></span>
+            <span>📅 Evaluated: <strong>2026-05-06</strong></span>
+            <span>🔍 Model: <strong>OTel Support Maturity (draft)</strong></span>
+        </div>
+    </div>
+</header>
+
+<div class="container">
+
+    <!-- ═══════════════════════════════════════════════════ RADAR CHART -->
+    <div class="card">
+        <div class="section-title">Maturity Overview</div>
+        <div class="chart-wrap">
+            <canvas id="radarChart"></canvas>
+        </div>
+        <div class="score-legend">
+            <div class="score-legend-item"><div class="score-legend-dot" style="background:#fed7d7"></div> 0 — Instrumented</div>
+            <div class="score-legend-item"><div class="score-legend-dot" style="background:#fbd38d"></div> 1 — OTel-Aligned</div>
+            <div class="score-legend-item"><div class="score-legend-dot" style="background:#90cdf4"></div> 2 — OTel-Native</div>
+            <div class="score-legend-item"><div class="score-legend-dot" style="background:#9ae6b4"></div> 3 — OTel-Optimized</div>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════ SUMMARY TABLE -->
+    <div class="card">
+        <div class="section-title">Dimension Scores</div>
+        <table class="summary-table">
+            <thead>
+            <tr>
+                <th>Dimension</th>
+                <th>Level</th>
+                <th>Summary</th>
+            </tr>
+            </thead>
+            <tbody>
+            <tr>
+                <td><strong>Integration Surface</strong></td>
+                <td><span class="level-badge level-2">2 — OTel-Native</span></td>
+                <td>OTLP is the primary path for all three signals; Prometheus retained as secondary</td>
+            </tr>
+            <tr>
+                <td><strong>Semantic Conventions</strong></td>
+                <td><span class="level-badge level-2">2 — OTel-Native</span></td>
+                <td>Current OTel HTTP conventions used in traces; <code>traefik_*</code> metrics and access log attributes diverge</td>
+            </tr>
+            <tr>
+                <td><strong>Resource Attributes &amp; Configuration</strong></td>
+                <td><span class="level-badge level-2">2 — OTel-Native</span></td>
+                <td>Strong native identity (<code>service.name</code>, <code>service.version</code>, process/OS/host attributes); configuration via Traefik-specific flags, not <code>OTEL_*</code> env vars</td>
+            </tr>
+            <tr>
+                <td><strong>Trace Modeling &amp; Context Propagation</strong></td>
+                <td><span class="level-badge level-2">2 — OTel-Native</span></td>
+                <td>Coherent SERVER→CLIENT trace structure; W3C Trace Context propagated to upstreams; <code>entry_point</code> is a useful custom attribute</td>
+            </tr>
+            <tr>
+                <td><strong>Multi-Signal Observability</strong></td>
+                <td><span class="level-badge level-2">2 — OTel-Native</span></td>
+                <td>All three signals flow via OTLP; access logs carry trace/span IDs; signals are functionally correlated</td>
+            </tr>
+            <tr>
+                <td><strong>Audience &amp; Signal Quality</strong></td>
+                <td><span class="level-badge level-2">2 — OTel-Native</span></td>
+                <td>Span names and attributes are user-oriented and operationally useful; access log attributes use PascalCase rather than OTel conventions</td>
+            </tr>
+            <tr>
+                <td><strong>Stability &amp; Change Management</strong></td>
+                <td><span class="level-badge level-1">1 — OTel-Aligned</span></td>
+                <td>OTel-related changes appear in changelogs; no explicit telemetry stability contract or deprecation policy; OTLP logs remain experimental</td>
+            </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════ SIGNALS -->
+    <div class="card">
+        <div class="section-title">Signal Status</div>
+        <div class="signals-grid">
+
+            <!-- TRACES -->
+            <div class="signal-card flowing">
+                <div class="signal-icon">🔍</div>
+                <div class="signal-name">Traces</div>
+                <div class="signal-status">✅ Flowing</div>
+                <div class="signal-detail">OTLP gRPC push to collector at <code>:4317</code>. W3C Trace Context propagated end-to-end.</div>
+            </div>
+
+            <!-- METRICS -->
+            <div class="signal-card flowing">
+                <div class="signal-icon">📊</div>
+                <div class="signal-name">Metrics</div>
+                <div class="signal-status">✅ Flowing</div>
+                <div class="signal-detail">OTLP gRPC push every 10s. Prometheus scrape endpoint also available at <code>:9100/metrics</code>.</div>
+            </div>
+
+            <!-- LOGS -->
+            <div class="signal-card partial">
+                <div class="signal-icon">📋</div>
+                <div class="signal-name">Logs</div>
+                <div class="signal-status">⚠️ Experimental</div>
+                <div class="signal-detail">OTLP gRPC push for daemon and access logs. Requires <code>experimental.otlpLogs: true</code> feature flag.</div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════ DIMENSIONS -->
+    <div class="section-title" style="margin-top:8px;">Dimension Details</div>
+
+    <!-- 1. Integration Surface -->
+    <div class="dimension-section">
+        <details open>
+            <summary>
+                <span class="level-badge level-2">2</span>
+                <span class="dim-title">Integration Surface</span>
+                <span class="dim-summary">OTLP is the primary path for all three signals; Prometheus retained as secondary</span>
+                <span class="summary-arrow">▶</span>
+            </summary>
+            <div class="dim-content">
+                <h4>What we observed</h4>
+                <p>Traefik v3 pushes traces, metrics, and logs directly to an OTel Collector via OTLP gRPC without any sidecar or adapter. Configuration is done through Traefik-specific Helm values (<code>tracing.otlp</code>, <code>metrics.otlp</code>, <code>logs.*.otlp</code>) pointing to <code>otel-collector-opentelemetry-collector.opentelemetry.svc.cluster.local:4317</code>. A Prometheus scrape endpoint remains available at <code>:9100/metrics</code> as a secondary option. OTLP log export currently requires <code>experimental.otlpLogs: true</code>, while traces and metrics are fully stable.</p>
+
+                <h4>What's working well</h4>
+                <ul>
+                    <li>OTLP gRPC export confirmed working for all three signals — no glue code or sidecars required.</li>
+                    <li>Prometheus endpoint is clearly positioned as a secondary option, not the default, reflecting intentional OTLP-first design.</li>
+                    <li>Documentation positions OpenTelemetry as the recommended observability path for Traefik v3 with dedicated pages for each signal.</li>
+                    <li>Integration works cleanly with a standard OTel Collector pipeline out of the box.</li>
+                </ul>
+
+                <h4>Opportunities</h4>
+                <div class="opportunity-box">
+                    <strong>Adopt <code>OTEL_*</code> environment variables</strong> — Traefik currently requires project-specific flags (<code>--tracing.otlp.grpc.endpoint</code>, <code>--metrics.otlp.grpc.endpoint</code>, <code>--log.otlp.grpc.endpoint</code>). Supporting <code>OTEL_EXPORTER_OTLP_ENDPOINT</code> alongside these flags would allow operators to configure Traefik's telemetry using the same mechanism they use for every other OTel-instrumented service in their fleet.
+                </div>
+                <div class="opportunity-box">
+                    <strong>Graduate OTLP logs from experimental</strong> — The OTLP log export feature works reliably in v3.6.15. Removing the <code>experimental.otlpLogs: true</code> requirement would make logs a first-class signal and complete the integration surface, enabling operators to adopt a fully stable three-signal pipeline without experimental flags.
+                </div>
+
+                <h4>Checklist</h4>
+                <ul class="checklist">
+                    <li><span class="check-pass">✅</span> OTLP export supported for traces, metrics, and logs</li>
+                    <li><span class="check-pass">✅</span> Users can connect to an existing OTel Collector without adapters or sidecars</li>
+                    <li><span class="check-pass">✅</span> Prometheus scraping retained as a secondary/optional path</li>
+                    <li><span class="check-pass">✅</span> Documentation positions OTLP as the recommended path</li>
+                    <li><span class="check-pass">✅</span> Integration works cleanly with a standard OTel Collector pipeline</li>
+                    <li><span class="check-warn">⚠️</span> Configuration uses project-specific flags, not <code>OTEL_*</code> environment variables</li>
+                    <li><span class="check-warn">⚠️</span> OTLP log export requires <code>experimental.otlpLogs: true</code> feature flag</li>
+                </ul>
+            </div>
+        </details>
+    </div>
+
+    <!-- 2. Semantic Conventions -->
+    <div class="dimension-section">
+        <details>
+            <summary>
+                <span class="level-badge level-2">2</span>
+                <span class="dim-title">Semantic Conventions</span>
+                <span class="dim-summary">Current OTel HTTP conventions in traces; <code>traefik_*</code> metrics and access log attributes diverge</span>
+                <span class="summary-arrow">▶</span>
+            </summary>
+            <div class="dim-content">
+                <h4>What we observed</h4>
+                <p>Traefik's entry-point spans use <strong>current, stable OTel HTTP semantic conventions</strong> — attributes like <code>http.request.method</code>, <code>http.response.status_code</code>, <code>url.path</code>, <code>url.scheme</code>, <code>client.address</code>, <code>network.peer.address</code>, and <code>user_agent.original</code> are all present and correctly scoped. No deprecated attributes (<code>http.method</code>, <code>http.status_code</code>, <code>http.target</code>) were found in Traefik's own spans. Schema URL <code>https://opentelemetry.io/schemas/1.40.0</code> is set on trace and log data. However, the <code>traefik_*</code> metric family uses non-OTel attribute names (<code>code</code>, <code>method</code>, <code>entrypoint</code>) and an older schema URL (<code>1.18.0</code>). Access log attributes use PascalCase proprietary names (<code>RequestMethod</code>, <code>DownstreamStatus</code>, <code>RouterName</code>) rather than OTel conventions.</p>
+
+                <h4>What's working well</h4>
+                <ul>
+                    <li>Trace spans are a strong example of OTel HTTP semantic convention alignment — attributes like <code>http.request.method</code>, <code>url.path</code>, <code>client.address</code>, and <code>network.protocol.version</code> are all current-spec compliant.</li>
+                    <li>Traefik emits dual metric sets: OTel semconv metrics (<code>http.server.request.duration</code>, <code>http.client.request.duration</code>) alongside the proprietary <code>traefik_*</code> family — showing active alignment intent.</li>
+                    <li>Schema URL <code>https://opentelemetry.io/schemas/1.40.0</code> is set on trace data, indicating deliberate versioned alignment with the OTel specification.</li>
+                    <li>The <code>entry_point</code> custom attribute is operationally meaningful and documented in Traefik's configuration reference.</li>
+                </ul>
+
+                <h4>Opportunities</h4>
+                <div class="opportunity-box">
+                    <strong>Align <code>traefik_*</code> metric attributes with OTel conventions</strong> — The proprietary metric family uses <code>code</code>, <code>method</code>, <code>entrypoint</code>, <code>router</code>, and <code>service</code> as attribute names. Mapping these to <code>http.response.status_code</code>, <code>http.request.method</code>, and <code>traefik.entrypoint</code> (as a namespaced custom attribute) would make the <code>traefik_*</code> metrics compatible with generic OTel tooling and dashboards without sacrificing backward compatibility.
+                </div>
+                <div class="opportunity-box">
+                    <strong>Align access log attributes with OTel log semantic conventions</strong> — Access log records currently use PascalCase proprietary names (<code>RequestMethod</code>, <code>DownstreamStatus</code>, <code>RouterName</code>). Adopting OTel log attribute names or explicitly documenting the proprietary schema as a semantic extension with a mapping table would improve interoperability with generic log analysis tools.
+                </div>
+                <div class="opportunity-box">
+                    <strong>Set instrumentation scope version</strong> — The <code>github.com/traefik/traefik</code> instrumentation scope currently reports <code>vunknown</code> as its version. Setting this to the actual Traefik release version would allow telemetry backends to correlate scope metadata with the release that produced the data.
+                </div>
+
+                <h4>Checklist</h4>
+                <ul class="checklist">
+                    <li><span class="check-pass">✅</span> Current OTel HTTP semantic conventions used in trace spans (no deprecated <code>http.method</code>, <code>http.status_code</code>)</li>
+                    <li><span class="check-pass">✅</span> OTel semconv metrics (<code>http.server.request.duration</code>, <code>http.client.request.duration</code>) emitted alongside proprietary metrics</li>
+                    <li><span class="check-pass">✅</span> Schema URL set on trace and log data (<code>https://opentelemetry.io/schemas/1.40.0</code>)</li>
+                    <li><span class="check-warn">⚠️</span> <code>traefik_*</code> metrics use non-OTel attribute names (<code>code</code>, <code>method</code>, <code>entrypoint</code>)</li>
+                    <li><span class="check-warn">⚠️</span> Access log attributes use PascalCase proprietary names, not OTel conventions</li>
+                    <li><span class="check-warn">⚠️</span> Instrumentation scope version not set (<code>vunknown</code>)</li>
+                    <li><span class="check-warn">⚠️</span> Access log severity mapping has a bug (<code>"panic"</code> in body, <code>info</code> at OTLP field level)</li>
+                </ul>
+            </div>
+        </details>
+    </div>
+
+    <!-- 3. Resource Attributes & Configuration -->
+    <div class="dimension-section">
+        <details>
+            <summary>
+                <span class="level-badge level-2">2</span>
+                <span class="dim-title">Resource Attributes &amp; Configuration</span>
+                <span class="dim-summary">Rich native identity across all signals; configuration uses Traefik-specific flags, not <code>OTEL_*</code> env vars</span>
+                <span class="summary-arrow">▶</span>
+            </summary>
+            <div class="dim-content">
+                <h4>What we observed</h4>
+                <p>Traefik natively emits a rich set of resource attributes via its embedded OTel Go SDK: <code>service.name=traefik</code>, <code>service.version=3.6.15</code>, <code>telemetry.sdk.name=opentelemetry</code>, <code>telemetry.sdk.language=go</code>, <code>telemetry.sdk.version=1.43.0</code>, <code>process.executable.name</code>, <code>process.executable.path</code>, <code>process.pid</code>, <code>process.owner</code>, <code>process.runtime.*</code>, <code>os.type=linux</code>, <code>os.description</code>, and <code>host.name</code>. A native Kubernetes resource detector (added in PR #11906) additionally sets <code>k8s.pod.uid</code>, <code>k8s.pod.name</code>, and <code>k8s.namespace.name</code>. All attributes are consistent across traces, metrics, and logs. However, Traefik does not respect <code>OTEL_EXPORTER_OTLP_ENDPOINT</code>, <code>OTEL_SERVICE_NAME</code>, or <code>OTEL_RESOURCE_ATTRIBUTES</code> — all OTel configuration must go through Traefik-specific CLI flags.</p>
+
+                <h4>What's working well</h4>
+                <ul>
+                    <li><code>service.name</code> and <code>service.version</code> are set natively and consistently across all three signals — no collector enrichment needed for service identity.</li>
+                    <li>Rich process, OS, and host attributes (<code>process.executable.path</code>, <code>process.runtime.version</code>, <code>os.description</code>) are emitted natively, providing deep operational context without any pipeline configuration.</li>
+                    <li>Native Kubernetes pod identity (<code>k8s.pod.uid</code>, <code>k8s.pod.name</code>, <code>k8s.namespace.name</code>) is unusual and impressive for an ingress controller — most projects rely entirely on collector enrichment for k8s attributes.</li>
+                    <li>Identity is fully consistent across all three signals — <code>service.name</code>, <code>service.version</code>, and <code>telemetry.sdk.*</code> attributes match exactly across traces, metrics, and logs.</li>
+                </ul>
+
+                <h4>Opportunities</h4>
+                <div class="opportunity-box">
+                    <strong>Support <code>OTEL_*</code> environment variables</strong> — Adding support for <code>OTEL_EXPORTER_OTLP_ENDPOINT</code>, <code>OTEL_SERVICE_NAME</code>, and <code>OTEL_RESOURCE_ATTRIBUTES</code> alongside Traefik's own flags would allow operators to configure Traefik's telemetry using the same mechanism they use for every other OTel-instrumented service, reducing cognitive overhead in multi-service deployments.
+                </div>
+                <div class="opportunity-box">
+                    <strong>Add <code>service.instance.id</code></strong> — Currently there is no per-instance differentiator beyond <code>host.name</code> (the pod hostname). Setting <code>service.instance.id</code> to a stable per-pod identifier (e.g., the pod UID) would allow backends to distinguish metrics and traces from individual Traefik replicas in a multi-replica deployment.
+                </div>
+
+                <h4>Checklist</h4>
+                <ul class="checklist">
+                    <li><span class="check-pass">✅</span> <code>service.name</code> and <code>service.version</code> set natively and consistently across all signals</li>
+                    <li><span class="check-pass">✅</span> Identity is stable across restarts (tied to the binary version, not runtime state)</li>
+                    <li><span class="check-pass">✅</span> Resource attributes placed correctly (not on spans)</li>
+                    <li><span class="check-pass">✅</span> Rich process, OS, and host attributes emitted natively</li>
+                    <li><span class="check-pass">✅</span> Kubernetes pod identity emitted natively (<code>k8s.pod.uid</code>, <code>k8s.pod.name</code>, <code>k8s.namespace.name</code>)</li>
+                    <li><span class="check-warn">⚠️</span> <code>service.instance.id</code> not set (no per-instance differentiation beyond <code>host.name</code>)</li>
+                    <li><span class="check-fail">❌</span> <code>OTEL_EXPORTER_OTLP_ENDPOINT</code>, <code>OTEL_SERVICE_NAME</code>, <code>OTEL_RESOURCE_ATTRIBUTES</code> not respected — configuration uses Traefik-specific flags only</li>
+                </ul>
+            </div>
+        </details>
+    </div>
+
+    <!-- 4. Trace Modeling & Context Propagation -->
+    <div class="dimension-section">
+        <details>
+            <summary>
+                <span class="level-badge level-2">2</span>
+                <span class="dim-title">Trace Modeling &amp; Context Propagation</span>
+                <span class="dim-summary">Coherent SERVER→CLIENT trace structure; W3C Trace Context propagated end-to-end</span>
+                <span class="summary-arrow">▶</span>
+            </summary>
+            <div class="dim-content">
+                <h4>What we observed</h4>
+                <p>Traefik produces a clean two-span structure per routed HTTP request: a root <code>SERVER</code> span (named by HTTP method, e.g., <code>GET</code>) representing the entry-point, and a child <code>CLIENT</code> span (<code>ReverseProxy</code>) representing the upstream proxy call. W3C Trace Context propagation is confirmed working — Traefik continues incoming traces via <code>traceparent</code> headers and injects <code>traceparent</code> into upstream requests when none is present. The full distributed trace chain <code>GET (traefik, SERVER)</code> → <code>ReverseProxy (traefik, CLIENT)</code> → <code>GET / (backend, SERVER)</code> was confirmed end-to-end. Error spans correctly set <code>status.code=2</code> (ERROR). Configurable verbosity (<code>minimal</code> vs. <code>detailed</code>) allows operators to add middleware spans when needed.</p>
+
+                <h4>What's working well</h4>
+                <ul>
+                    <li>Span kinds are correct: <code>SERVER</code> for entry-point spans, <code>CLIENT</code> for upstream proxy calls — following OTel semantic conventions precisely.</li>
+                    <li>Span names follow OTel HTTP semantic conventions for server spans (HTTP method-based naming), confirmed as an intentional decision via PR #11673 ("[tracing] Follow OTel semantic conventions for root span naming").</li>
+                    <li>W3C Trace Context propagation works end-to-end — Traefik correctly continues incoming traces and starts new traces when no context is present.</li>
+                    <li>The <code>entry_point</code> custom attribute (e.g., <code>web</code>, <code>traefik</code>) is a useful domain-specific addition that helps operators identify which Traefik entrypoint handled a request in multi-entrypoint deployments.</li>
+                    <li>Configurable trace verbosity (<code>addInternals: true</code>, <code>detailed</code> mode) gives operators control over signal volume without sacrificing default usability.</li>
+                </ul>
+
+                <h4>Opportunities</h4>
+                <div class="opportunity-box">
+                    <strong>Document trace modeling decisions</strong> — Traefik's trace structure (SERVER→CLIENT span hierarchy, method-based naming, <code>entry_point</code> attribute) is well-designed but not explicitly documented as an architectural decision. Adding a "How Traefik models traces" section to the documentation would help operators understand what to expect and set up dashboards and alerts with confidence.
+                </div>
+                <div class="opportunity-box">
+                    <strong>Document trace behavior for middleware chains and retries</strong> — The trace structure for middleware chains, retry logic, and circuit-breaker scenarios is not explicitly documented. Adding examples of these trace topologies would help operators understand Traefik's observability behavior in complex routing scenarios.
+                </div>
+
+                <h4>Checklist</h4>
+                <ul class="checklist">
+                    <li><span class="check-pass">✅</span> W3C Trace Context (<code>traceparent</code>/<code>tracestate</code>) propagated to upstream services</li>
+                    <li><span class="check-pass">✅</span> <code>SERVER</code> spans for entry points, <code>CLIENT</code> spans for upstream proxy calls</li>
+                    <li><span class="check-pass">✅</span> Correct parent-child relationships between entry-point and proxy spans</li>
+                    <li><span class="check-pass">✅</span> Span names follow OTel HTTP semantic conventions (method-based)</li>
+                    <li><span class="check-pass">✅</span> Distributed traces confirmed end-to-end (Traefik → backend)</li>
+                    <li><span class="check-pass">✅</span> Error status correctly set on failed spans (<code>status.code=2</code>)</li>
+                    <li><span class="check-warn">⚠️</span> Trace behavior for async/background work (middleware chains, retries) not explicitly documented</li>
+                </ul>
+            </div>
+        </details>
+    </div>
+
+    <!-- 5. Multi-Signal Observability -->
+    <div class="dimension-section">
+        <details>
+            <summary>
+                <span class="level-badge level-2">2</span>
+                <span class="dim-title">Multi-Signal Observability</span>
+                <span class="dim-summary">All three signals via OTLP; access logs carry trace/span IDs for native log-to-trace correlation</span>
+                <span class="summary-arrow">▶</span>
+            </summary>
+            <div class="dim-content">
+                <h4>What we observed</h4>
+                <p>Traefik v3 emits all three signals via OTLP gRPC: traces (stable), metrics (stable, every 10s), and logs (experimental). Access log records include <code>traceId</code> and <code>spanId</code> at the OTLP record level, confirmed in the telemetry data — enabling native log-to-trace correlation in backends like Grafana without additional processing. All signals share the same <code>service.name=traefik</code> and <code>service.version=3.6.15</code> resource identity, enabling cross-signal filtering. However, the <code>traefik_*</code> metric attribute names (<code>code</code>, <code>method</code>) differ from trace attribute names (<code>http.response.status_code</code>, <code>http.request.method</code>), requiring mapping for cross-signal correlation on those dimensions. General daemon logs do not include trace context — only access logs do.</p>
+
+                <h4>What's working well</h4>
+                <ul>
+                    <li>All three signals are first-class OTLP outputs — traces, metrics, and logs all flow through the same OTLP gRPC pipeline to the collector.</li>
+                    <li>Access logs include <code>traceId</code> and <code>spanId</code> at the OTLP record level, enabling native log-to-trace linking in observability backends without any additional processing or log parsing.</li>
+                    <li>Consistent <code>service.name</code> and <code>service.version</code> across all three signals enables cross-signal filtering and correlation by service identity.</li>
+                    <li>Metrics and traces complement each other well: <code>http.server.request.duration</code> provides aggregate latency and error rate, while traces provide per-request detail.</li>
+                </ul>
+
+                <h4>Opportunities</h4>
+                <div class="opportunity-box">
+                    <strong>Align metric attribute names with trace attribute names</strong> — The <code>traefik_*</code> metric family uses <code>code</code> and <code>method</code> as attribute names, while traces use <code>http.response.status_code</code> and <code>http.request.method</code>. Aligning these (or documenting the mapping) would make it easier to correlate specific metric dimensions with the corresponding trace attributes in dashboards and alert queries.
+                </div>
+                <div class="opportunity-box">
+                    <strong>Add trace context to general daemon logs</strong> — Currently, only access logs include <code>traceId</code> and <code>spanId</code>. Adding trace context to general daemon logs (configuration events, error logs) where a request context is available would enable operators to correlate configuration-level events with the traces that triggered them.
+                </div>
+
+                <h4>Checklist</h4>
+                <ul class="checklist">
+                    <li><span class="check-pass">✅</span> All three signals emitted via OTLP</li>
+                    <li><span class="check-pass">✅</span> Access logs include <code>traceId</code> and <code>spanId</code> at the OTLP record level — native log-to-trace correlation</li>
+                    <li><span class="check-pass">✅</span> Consistent <code>service.name</code> and <code>service.version</code> across all signals</li>
+                    <li><span class="check-pass">✅</span> Metrics and traces complement each other (aggregate counts/latencies vs. per-request detail)</li>
+                    <li><span class="check-warn">⚠️</span> OTLP log export is experimental — not yet a stable first-class signal</li>
+                    <li><span class="check-warn">⚠️</span> General daemon logs do not include trace context (only access logs do)</li>
+                    <li><span class="check-warn">⚠️</span> <code>traefik_*</code> metric attribute names (<code>code</code>, <code>method</code>) differ from trace attribute names — cross-signal correlation requires mapping</li>
+                </ul>
+            </div>
+        </details>
+    </div>
+
+    <!-- 6. Audience & Signal Quality -->
+    <div class="dimension-section">
+        <details>
+            <summary>
+                <span class="level-badge level-2">2</span>
+                <span class="dim-title">Audience &amp; Signal Quality</span>
+                <span class="dim-summary">Operator-oriented span names and attributes; access log naming and severity issues reduce out-of-the-box usability</span>
+                <span class="summary-arrow">▶</span>
+            </summary>
+            <div class="dim-content">
+                <h4>What we observed</h4>
+                <p>Traefik's telemetry is clearly designed with operators in mind. Entry-point spans use HTTP method names (<code>GET</code>, <code>POST</code>) as span names — immediately understandable — and include all information needed to understand a request: method, path, status code, client address, user agent, and the upstream backend. The <code>entry_point</code> attribute identifies which Traefik entrypoint handled the request. Configurable trace verbosity (<code>minimal</code> vs. <code>detailed</code>) gives operators control over signal volume. However, access log attributes use PascalCase proprietary names (<code>RequestMethod</code>, <code>DownstreamStatus</code>, <code>RouterName</code>) rather than OTel conventions, and there is a known severity mapping bug where access log records report <code>severityText="info"</code> at the OTLP level but contain <code>"level":"panic"</code> in the log body.</p>
+
+                <h4>What's working well</h4>
+                <ul>
+                    <li>Span names follow OTel HTTP semantic conventions (HTTP method-based for <code>SERVER</code> spans, <code>ReverseProxy</code> for <code>CLIENT</code> spans) — confirmed as an intentional quality improvement via PR #11673.</li>
+                    <li>Span attributes provide complete operational context: <code>entry_point</code>, <code>http.request.method</code>, <code>url.path</code>, <code>http.response.status_code</code>, <code>client.address</code>, <code>user_agent.original</code>, and upstream <code>server.address</code> are all present by default.</li>
+                    <li>Configurable trace verbosity (<code>minimal</code> default, <code>detailed</code> for middleware spans, <code>addInternals: true</code> for health check traces) is well-designed — operators choose their verbosity level without sacrificing default usability.</li>
+                    <li>Metrics cover the full request lifecycle at three levels of granularity: entry point, router, and service — giving operators multiple aggregation dimensions.</li>
+                </ul>
+
+                <h4>Opportunities</h4>
+                <div class="opportunity-box">
+                    <strong>Fix access log severity mapping</strong> — Access log records currently report <code>severityText="info"</code> at the OTLP record level but contain <code>"level":"panic"</code> in the log body. This is a known bug in the experimental OTLP log implementation. Fixing the severity mapping would ensure that log-based alerting on severity level works correctly out of the box.
+                </div>
+                <div class="opportunity-box">
+                    <strong>Align access log attribute names with OTel conventions</strong> — Replacing PascalCase proprietary names (<code>RequestMethod</code>, <code>DownstreamStatus</code>, <code>RouterName</code>) with OTel log semantic convention names (or explicitly documenting the mapping) would make access logs usable in generic OTel log analysis tools without project-specific knowledge.
+                </div>
+                <div class="opportunity-box">
+                    <strong>Consolidate duplicate trace/span ID fields in access logs</strong> — Access logs currently include <code>TraceId</code>, <code>SpanId</code>, <code>trace_id</code>, and <code>span_id</code> as log attributes in addition to the OTLP record-level fields. Consolidating to a single canonical set would reduce confusion and log payload size.
+                </div>
+
+                <h4>Checklist</h4>
+                <ul class="checklist">
+                    <li><span class="check-pass">✅</span> Span names follow OTel conventions (HTTP method-based)</li>
+                    <li><span class="check-pass">✅</span> Span attributes provide complete operational context without internal implementation details</li>
+                    <li><span class="check-pass">✅</span> Configurable trace verbosity (minimal/detailed) with sensible defaults</li>
+                    <li><span class="check-pass">✅</span> Metrics cover operationally relevant dimensions (entry point, router, service, latency, bytes)</li>
+                    <li><span class="check-pass">✅</span> Access logs include trace context for correlation</li>
+                    <li><span class="check-warn">⚠️</span> Access log attribute names use PascalCase (<code>RequestMethod</code>, <code>DownstreamStatus</code>) rather than OTel conventions</li>
+                    <li><span class="check-warn">⚠️</span> Access log severity bug: <code>severityText="info"</code> at OTLP level but body contains <code>"level":"panic"</code></li>
+                    <li><span class="check-warn">⚠️</span> General logs lack <code>severityText</code> at the OTLP record level (only <code>severityNumber</code> set)</li>
+                    <li><span class="check-warn">⚠️</span> Duplicate trace/span ID fields in access logs (<code>TraceId</code>, <code>SpanId</code>, <code>trace_id</code>, <code>span_id</code>)</li>
+                </ul>
+            </div>
+        </details>
+    </div>
+
+    <!-- 7. Stability & Change Management -->
+    <div class="dimension-section">
+        <details>
+            <summary>
+                <span class="level-badge level-1">1</span>
+                <span class="dim-title">Stability &amp; Change Management</span>
+                <span class="dim-summary">OTel changes appear in changelogs; no formal telemetry stability contract or deprecation policy</span>
+                <span class="summary-arrow">▶</span>
+            </summary>
+            <div class="dim-content">
+                <h4>What we observed</h4>
+                <p>Traefik's changelog includes OTel-related entries tagged with <code>[otel]</code>, <code>[tracing]</code>, <code>[metrics]</code>, <code>[logs]</code>, and <code>[accesslogs]</code>. Recent examples include: adding OTel-conformant trace context attributes to access logs (#12801), updating OTel to v1.38.0 and semantic conventions to v1.37.0 (#12099), following OTel semantic conventions for root span naming (#11673), renaming <code>traefik_tls_certs_not_after_milliseconds</code> to <code>traefik_tls_certs_not_after_seconds</code> (#12141), and adding k8s resource attributes natively (#11906). The project is aware that OTel changes have impact and labels experimental features appropriately. However, there is no formal telemetry stability contract, no explicit "breaking change" flag for telemetry changes, and no migration guidance when metric names or span attributes change.</p>
+
+                <h4>What's working well</h4>
+                <ul>
+                    <li>OTel-related changes are consistently tagged in the changelog (<code>[otel]</code>, <code>[tracing]</code>, <code>[metrics]</code>), making it possible for users to track telemetry changes across releases.</li>
+                    <li>Experimental features are explicitly labeled — <code>experimental.otlpLogs: true</code> is a clear signal to users that this feature is not yet stable, demonstrating stability awareness.</li>
+                    <li>Schema URL is set on trace and log data (<code>https://opentelemetry.io/schemas/1.40.0</code>), providing a versioned reference for the semantic conventions in use.</li>
+                    <li>The project actively tracks OTel semantic convention updates — the changelog shows regular bumps of <code>go.opentelemetry.io/otel</code> and semantic convention versions.</li>
+                </ul>
+
+                <h4>Opportunities</h4>
+                <div class="opportunity-box">
+                    <strong>Establish a telemetry stability contract</strong> — Documenting which telemetry signals, metric names, span attributes, and log attributes are considered stable (and which are experimental) would give operators confidence when building dashboards and alerts on Traefik's telemetry. A dedicated "Telemetry Reference" page listing stable vs. experimental telemetry would be a significant improvement.
+                </div>
+                <div class="opportunity-box">
+                    <strong>Flag breaking telemetry changes explicitly with migration guidance</strong> — Breaking changes like the metric rename from <code>traefik_tls_certs_not_after_milliseconds</code> to <code>traefik_tls_certs_not_after_seconds</code> affect users with existing dashboards and alerts. Adding explicit "BREAKING" flags to telemetry changes in release notes, along with a migration note (e.g., "update your Prometheus alert rule from X to Y"), would significantly reduce operator friction during upgrades.
+                </div>
+                <div class="opportunity-box">
+                    <strong>Define a review process for telemetry changes</strong> — Establishing a lightweight process (e.g., a checklist in the PR template for telemetry-affecting changes) would ensure that breaking telemetry changes are identified and communicated consistently before they ship.
+                </div>
+
+                <h4>Checklist</h4>
+                <ul class="checklist">
+                    <li><span class="check-pass">✅</span> OTel-related changes appear in changelogs with relevant tags</li>
+                    <li><span class="check-pass">✅</span> Experimental features explicitly labeled (<code>experimental.otlpLogs</code>)</li>
+                    <li><span class="check-pass">✅</span> Schema URL set on trace and log data</li>
+                    <li><span class="check-warn">⚠️</span> No explicit telemetry stability contract or documentation</li>
+                    <li><span class="check-warn">⚠️</span> Breaking telemetry changes (e.g., metric renames) listed in changelog but without migration guidance</li>
+                    <li><span class="check-warn">⚠️</span> No distinction between stable and experimental telemetry beyond the <code>experimental.otlpLogs</code> flag</li>
+                    <li><span class="check-fail">❌</span> No defined review process for telemetry changes</li>
+                    <li><span class="check-fail">❌</span> No deprecation timelines or migration paths for telemetry changes</li>
+                </ul>
+            </div>
+        </details>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════ KEY TAKEAWAYS -->
+    <div class="card" style="margin-top:32px;">
+        <div class="section-title">Key Takeaways</div>
+        <div class="takeaways-grid">
+            <div class="takeaway-box strengths">
+                <h3>🟢 Strengths</h3>
+                <ul>
+                    <li><strong>Excellent trace semantic convention alignment</strong> — Entry-point spans use current, stable OTel HTTP conventions with no deprecated attributes and schema URL set.</li>
+                    <li><strong>Rich native resource attributes</strong> — <code>service.name</code>, <code>service.version</code>, process/OS/host, and native Kubernetes pod identity (<code>k8s.pod.uid</code>, <code>k8s.pod.name</code>) emitted consistently across all three signals.</li>
+                    <li><strong>Full distributed tracing with W3C context propagation</strong> — The complete trace chain (Traefik entry-point → proxy → backend) works out of the box with correct span kinds and parent-child relationships.</li>
+                    <li><strong>Native log-to-trace correlation</strong> — Access logs include <code>traceId</code> and <code>spanId</code> at the OTLP record level, enabling native correlation in backends like Grafana without additional processing.</li>
+                    <li><strong>Dual metric strategy</strong> — Both OTel semconv metrics (<code>http.server.request.duration</code>) and proprietary <code>traefik_*</code> metrics are emitted, showing active alignment intent while maintaining backward compatibility.</li>
+                </ul>
+            </div>
+            <div class="takeaway-box improvements">
+                <h3>🟡 Priority Improvements</h3>
+                <ul>
+                    <li><strong>Adopt <code>OTEL_*</code> environment variable support</strong> — Respecting <code>OTEL_EXPORTER_OTLP_ENDPOINT</code>, <code>OTEL_SERVICE_NAME</code>, and <code>OTEL_RESOURCE_ATTRIBUTES</code> would enable standard OTel SDK configuration patterns across the ecosystem.</li>
+                    <li><strong>Fix access log severity mapping</strong> — The <code>"level":"panic"</code> bug in access log bodies is a known issue in the experimental OTLP log implementation that affects log-based alerting.</li>
+                    <li><strong>Graduate OTLP logs from experimental</strong> — OTLP log export works reliably in v3.6.15; removing the <code>experimental.otlpLogs: true</code> requirement would make logs a stable first-class signal.</li>
+                    <li><strong>Establish a telemetry stability contract</strong> — Documenting stable vs. experimental telemetry and flagging breaking changes with migration guidance would significantly reduce operator friction during upgrades.</li>
+                    <li><strong>Align access log attribute names with OTel conventions</strong> — Replacing PascalCase proprietary names with OTel semantic convention names would improve interoperability with generic log analysis tools.</li>
+                </ul>
+            </div>
+        </div>
+        <div class="takeaway-box observations" style="margin-top:16px;">
+            <h3>🔵 Notable Observations</h3>
+            <ul>
+                <li><strong>Native Kubernetes resource detector</strong> — Traefik includes a native k8s resource detector (PR #11906) that sets <code>k8s.pod.uid</code>, <code>k8s.pod.name</code>, and <code>k8s.namespace.name</code> without collector enrichment — unusual and impressive for an ingress controller.</li>
+                <li><strong>Dual schema URL versions</strong> — The <code>traefik_*</code> metric scope uses schema URL <code>https://opentelemetry.io/schemas/1.18.0</code> while traces and OTel semconv metrics use <code>1.40.0</code>, suggesting the proprietary metrics were not updated when the schema was bumped.</li>
+                <li><strong>Instrumentation scope version not set</strong> — The <code>github.com/traefik/traefik</code> scope reports <code>vunknown</code>, making it impossible to correlate scope metadata with a specific Traefik version (though <code>service.version</code> in the resource serves this purpose).</li>
+                <li><strong><code>process.command_args</code> exposes OTel endpoint configuration</strong> — The full Traefik command line (including OTLP endpoint addresses) appears in the resource attributes, which may expose internal configuration details in shared observability backends.</li>
+                <li><strong>Active OTel maintenance</strong> — The changelog shows regular bumps of <code>go.opentelemetry.io/otel</code> and semantic convention versions, indicating Traefik actively tracks and adopts OTel specification updates.</li>
+            </ul>
+        </div>
+    </div>
+
+</div><!-- /container -->
+
+<footer class="site-footer">
+    <p>
+        Evaluated using the <strong>OpenTelemetry Support Maturity Model for CNCF Projects</strong> (draft) ·
+        Traefik <a href="https://github.com/traefik/traefik">github.com/traefik/traefik</a> ·
+        Telemetry collected via OTel Collector (contrib v0.150.1) with file exporter in a kind cluster (<code>otel-eval-traefik</code>) · Semantic conventions checked against OTel HTTP semconv v1.40.0
+    </p>
+</footer>
+
+<script>
+    const DIMENSION_SCORES = [
+        /* Integration Surface        */ 2,
+        /* Semantic Conventions       */ 2,
+        /* Resource Attrs & Config    */ 2,
+        /* Trace Modeling & Propagation */ 2,
+        /* Multi-Signal Observability */ 2,
+        /* Audience & Signal Quality  */ 2,
+        /* Stability & Change Mgmt    */ 1,
+    ];
+
+    const PROJECT_LABEL = 'Traefik v3.6.15';
+
+    const ctx = document.getElementById('radarChart').getContext('2d');
+    new Chart(ctx, {
+        type: 'radar',
+        data: {
+            labels: [
+                'Integration Surface',
+                'Semantic Conventions',
+                'Resource Attrs\n& Configuration',
+                'Trace Modeling\n& Propagation',
+                'Multi-Signal\nObservability',
+                'Audience &\nSignal Quality',
+                'Stability &\nChange Mgmt'
+            ],
+            datasets: [{
+                label: PROJECT_LABEL,
+                data: DIMENSION_SCORES,
+                backgroundColor: 'rgba(49, 130, 206, 0.15)',
+                borderColor: 'rgba(49, 130, 206, 0.9)',
+                borderWidth: 2.5,
+                pointBackgroundColor: 'rgba(49, 130, 206, 1)',
+                pointBorderColor: '#fff',
+                pointHoverBackgroundColor: '#fff',
+                pointHoverBorderColor: 'rgba(49, 130, 206, 1)',
+                pointRadius: 5,
+                pointHoverRadius: 7,
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            scales: {
+                r: {
+                    min: 0,
+                    max: 3,
+                    ticks: {
+                        stepSize: 1,
+                        callback: (v) => ['Instrumented','Aligned','Native','Optimized'][v] || v,
+                        font: { size: 10 },
+                        color: '#718096',
+                        backdropColor: 'transparent',
+                    },
+                    grid: { color: 'rgba(0,0,0,0.08)' },
+                    angleLines: { color: 'rgba(0,0,0,0.1)' },
+                    pointLabels: {
+                        font: { size: 12, weight: '600' },
+                        color: '#2d3748',
+                    }
+                }
+            },
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    callbacks: {
+                        label: (ctx) => {
+                            const names = ['Instrumented','OTel-Aligned','OTel-Native','OTel-Optimized'];
+                            return ` Level ${ctx.raw} — ${names[ctx.raw]}`;
+                        }
+                    }
+                }
+            }
+        }
+    });
+</script>
+</body>
+</html>
