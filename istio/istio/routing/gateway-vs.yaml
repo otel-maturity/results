@@ -1,0 +1,36 @@
+# Istio Gateway + VirtualService routing traffic to the otel-eval-backend
+apiVersion: networking.istio.io/v1
+kind: Gateway
+metadata:
+  name: eval-gateway
+  namespace: istio-system
+spec:
+  selector:
+    istio: gateway   # matches the istio/gateway release label
+  servers:
+    - port:
+        number: 80
+        name: http
+        protocol: HTTP
+      hosts:
+        - "*"
+---
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: eval-backend
+  namespace: demo
+spec:
+  hosts:
+    - "*"
+  gateways:
+    - istio-system/eval-gateway
+  http:
+    - match:
+        - uri:
+            prefix: /
+      route:
+        - destination:
+            host: otel-eval-backend.demo.svc.cluster.local
+            port:
+              number: 3000

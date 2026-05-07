@@ -1,0 +1,17 @@
+# Istio Telemetry CR — mesh-wide tracing + access logging via OTel
+# Applied to istio-system to make it mesh-wide
+apiVersion: telemetry.istio.io/v1
+kind: Telemetry
+metadata:
+  name: mesh-default
+  namespace: istio-system
+spec:
+  # Enable OTel tracing at 100% sampling for evaluation
+  tracing:
+    - providers:
+        - name: otel-tracing
+      randomSamplingPercentage: 100
+  # Enable OTel access log streaming (ALS) for evaluation
+  accessLogging:
+    - providers:
+        - name: otel-als

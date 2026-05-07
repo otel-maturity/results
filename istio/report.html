@@ -1,0 +1,766 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Istio — OpenTelemetry Maturity Report</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, sans-serif;
+            background: #f8f9fc;
+            color: #1a202c;
+            line-height: 1.6;
+        }
+
+        a { color: #3182ce; text-decoration: none; }
+        a:hover { text-decoration: underline; }
+
+        /* ── Header ── */
+        .site-header {
+            background: linear-gradient(135deg, #1a365d 0%, #2a4a7f 60%, #3182ce 100%);
+            color: white;
+            padding: 48px 32px 40px;
+        }
+        .header-inner { max-width: 960px; margin: 0 auto; }
+        .project-badge {
+            display: inline-flex; align-items: center; gap: 8px;
+            background: rgba(255,255,255,0.15); border-radius: 20px;
+            padding: 4px 14px; font-size: 13px; margin-bottom: 16px;
+        }
+        .project-badge .dot { width: 8px; height: 8px; background: #68d391; border-radius: 50%; }
+        h1 { font-size: 2.2rem; font-weight: 700; margin-bottom: 8px; }
+        .header-meta { font-size: 14px; opacity: 0.8; margin-top: 12px; }
+        .header-meta span { margin-right: 20px; }
+
+        /* ── Layout ── */
+        .container { max-width: 960px; margin: 0 auto; padding: 40px 24px; }
+
+        /* ── Section titles ── */
+        .section-title {
+            font-size: 1.3rem; font-weight: 700; color: #1a365d;
+            border-bottom: 2px solid #bee3f8; padding-bottom: 8px; margin-bottom: 24px;
+        }
+
+        /* ── Card ── */
+        .card {
+            background: white; border-radius: 12px;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.08); padding: 28px;
+            margin-bottom: 28px;
+        }
+
+        /* ── Radar chart ── */
+        .chart-wrap {
+            display: flex; justify-content: center; align-items: center;
+            padding: 16px 0;
+        }
+        .chart-wrap canvas { max-width: 480px; max-height: 480px; }
+
+        /* ── Score legend ── */
+        .score-legend {
+            display: flex; justify-content: center; gap: 24px; flex-wrap: wrap;
+            margin-top: 16px; font-size: 13px;
+        }
+        .score-legend-item { display: flex; align-items: center; gap: 6px; }
+        .score-legend-dot { width: 12px; height: 12px; border-radius: 50%; }
+
+        /* ── Summary table ── */
+        .summary-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+        .summary-table th {
+            background: #ebf8ff; text-align: left; padding: 10px 14px;
+            font-weight: 600; color: #2b6cb0; border-bottom: 2px solid #bee3f8;
+        }
+        .summary-table td { padding: 10px 14px; border-bottom: 1px solid #e2e8f0; vertical-align: top; }
+        .summary-table tr:last-child td { border-bottom: none; }
+        .summary-table tr:hover td { background: #f7fafc; }
+
+        .level-badge {
+            display: inline-block; padding: 2px 10px; border-radius: 12px;
+            font-size: 12px; font-weight: 700; white-space: nowrap;
+        }
+        .level-0 { background: #fff5f5; color: #c53030; border: 1px solid #feb2b2; }
+        .level-1 { background: #fffaf0; color: #c05621; border: 1px solid #fbd38d; }
+        .level-2 { background: #ebf8ff; color: #2b6cb0; border: 1px solid #bee3f8; }
+        .level-3 { background: #f0fff4; color: #276749; border: 1px solid #9ae6b4; }
+
+        /* ── Signals ── */
+        .signals-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+        .signal-card {
+            border-radius: 10px; padding: 20px; text-align: center;
+            border: 1px solid #e2e8f0;
+        }
+        .signal-card.flowing { background: #f0fff4; border-color: #9ae6b4; }
+        .signal-card.partial { background: #fffaf0; border-color: #fbd38d; }
+        .signal-card.not-flowing { background: #fff5f5; border-color: #feb2b2; }
+        .signal-icon { font-size: 2rem; margin-bottom: 8px; }
+        .signal-name { font-weight: 700; font-size: 15px; margin-bottom: 4px; }
+        .signal-status { font-size: 12px; font-weight: 600; }
+        .signal-card.flowing .signal-status { color: #276749; }
+        .signal-card.partial .signal-status { color: #c05621; }
+        .signal-card.not-flowing .signal-status { color: #c53030; }
+        .signal-detail { font-size: 12px; color: #718096; margin-top: 6px; }
+
+        /* ── Dimension sections ── */
+        .dimension-section { margin-bottom: 20px; }
+        details { border-radius: 10px; border: 1px solid #e2e8f0; overflow: hidden; }
+        summary {
+            display: flex; align-items: center; gap: 12px;
+            padding: 16px 20px; cursor: pointer; background: white;
+            list-style: none; user-select: none;
+            transition: background 0.15s;
+        }
+        summary:hover { background: #f7fafc; }
+        summary::-webkit-details-marker { display: none; }
+        .summary-arrow {
+            margin-left: auto; color: #718096; transition: transform 0.2s;
+        }
+        details[open] .summary-arrow { transform: rotate(90deg); }
+        .dim-title { font-weight: 700; font-size: 15px; flex: 1; }
+        .dim-summary { font-size: 13px; color: #718096; }
+
+        .dim-content {
+            padding: 24px 24px 20px; background: #fafafa;
+            border-top: 1px solid #e2e8f0;
+        }
+        .dim-content h4 {
+            font-size: 13px; font-weight: 700; text-transform: uppercase;
+            letter-spacing: 0.05em; color: #4a5568; margin: 16px 0 8px;
+        }
+        .dim-content h4:first-child { margin-top: 0; }
+        .dim-content p { font-size: 14px; color: #4a5568; margin-bottom: 8px; }
+        .dim-content ul { padding-left: 20px; }
+        .dim-content li { font-size: 14px; color: #4a5568; margin-bottom: 4px; }
+        code {
+            background: #edf2f7; padding: 1px 5px; border-radius: 4px;
+            font-family: 'SFMono-Regular', Consolas, monospace; font-size: 12px;
+        }
+
+        .checklist { list-style: none; padding: 0; }
+        .checklist li { display: flex; gap: 8px; font-size: 13px; padding: 3px 0; }
+        .check-pass { color: #276749; font-weight: 700; }
+        .check-fail { color: #c53030; font-weight: 700; }
+        .check-warn { color: #c05621; font-weight: 700; }
+
+        .opportunity-box {
+            background: #fffaf0; border-left: 3px solid #f6ad55;
+            padding: 12px 16px; border-radius: 0 8px 8px 0;
+            margin: 12px 0; font-size: 13px; color: #744210;
+        }
+
+        /* ── Key takeaways ── */
+        .takeaways-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        .takeaway-box { border-radius: 10px; padding: 20px; }
+        .takeaway-box.strengths { background: #f0fff4; border: 1px solid #9ae6b4; }
+        .takeaway-box.improvements { background: #fffaf0; border: 1px solid #fbd38d; }
+        .takeaway-box.observations { background: #ebf8ff; border: 1px solid #bee3f8; }
+        .takeaway-box h3 { font-size: 14px; font-weight: 700; margin-bottom: 12px; }
+        .takeaway-box.strengths h3 { color: #276749; }
+        .takeaway-box.improvements h3 { color: #c05621; }
+        .takeaway-box.observations h3 { color: #2b6cb0; }
+        .takeaway-box ul { padding-left: 18px; }
+        .takeaway-box li { font-size: 13px; margin-bottom: 6px; color: #4a5568; }
+
+        /* ── Footer ── */
+        .site-footer {
+            background: #1a202c; color: #a0aec0;
+            padding: 32px; text-align: center; font-size: 13px; margin-top: 40px;
+        }
+        .site-footer a { color: #63b3ed; }
+
+        @media (max-width: 640px) {
+            .signals-grid { grid-template-columns: 1fr; }
+            .takeaways-grid { grid-template-columns: 1fr; }
+            h1 { font-size: 1.6rem; }
+        }
+    </style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════════ HEADER -->
+<header class="site-header">
+    <div class="header-inner">
+        <div class="project-badge">
+            <span class="dot"></span>
+            CNCF Graduated Project
+        </div>
+        <h1>Istio</h1>
+        <p style="font-size:1.1rem; opacity:0.9; margin-top:6px;">
+            OpenTelemetry Support Maturity Report
+        </p>
+        <p style="font-size:0.95rem; opacity:0.75; margin-top:8px; max-width:680px;">
+            Open-source service mesh providing traffic management, mTLS, and observability for microservices via Envoy proxy sidecar injection.
+        </p>
+        <div class="header-meta">
+            <span>📦 Version: <strong>1.29.2</strong></span>
+            <span>📅 Evaluated: <strong>2026-05-07</strong></span>
+            <span>🔍 Model: <strong>OTel Support Maturity (draft)</strong></span>
+        </div>
+    </div>
+</header>
+
+<div class="container">
+
+    <!-- ═══════════════════════════════════════════════════ RADAR CHART -->
+    <div class="card">
+        <div class="section-title">Maturity Overview</div>
+        <div class="chart-wrap">
+            <canvas id="radarChart"></canvas>
+        </div>
+        <div class="score-legend">
+            <div class="score-legend-item"><div class="score-legend-dot" style="background:#fed7d7"></div> 0 — Instrumented</div>
+            <div class="score-legend-item"><div class="score-legend-dot" style="background:#fbd38d"></div> 1 — OTel-Aligned</div>
+            <div class="score-legend-item"><div class="score-legend-dot" style="background:#90cdf4"></div> 2 — OTel-Native</div>
+            <div class="score-legend-item"><div class="score-legend-dot" style="background:#9ae6b4"></div> 3 — OTel-Optimized</div>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════ SUMMARY TABLE -->
+    <div class="card">
+        <div class="section-title">Dimension Scores</div>
+        <table class="summary-table">
+            <thead>
+            <tr>
+                <th>Dimension</th>
+                <th>Level</th>
+                <th>Summary</th>
+            </tr>
+            </thead>
+            <tbody>
+            <tr>
+                <td><strong>Integration Surface</strong></td>
+                <td><span class="level-badge level-2">2 — OTel-Native</span></td>
+                <td>OTLP is the documented path for traces and logs; metrics remain Prometheus-only with no OTLP export</td>
+            </tr>
+            <tr>
+                <td><strong>Semantic Conventions</strong></td>
+                <td><span class="level-badge level-1">1 — OTel-Aligned</span></td>
+                <td>Istio-native span attributes use deprecated HTTP conventions (<code>http.method</code>, <code>http.status_code</code>, <code>http.url</code>); Prometheus metrics use proprietary label schemas</td>
+            </tr>
+            <tr>
+                <td><strong>Resource Attributes &amp; Configuration</strong></td>
+                <td><span class="level-badge level-1">1 — OTel-Aligned</span></td>
+                <td><code>service.name</code> is set natively for traces/logs but inconsistent; no <code>service.version</code>; metrics use scrape-job names; no <code>OTEL_*</code> env var support</td>
+            </tr>
+            <tr>
+                <td><strong>Trace Modeling &amp; Context Propagation</strong></td>
+                <td><span class="level-badge level-2">2 — OTel-Native</span></td>
+                <td>W3C Trace Context propagated correctly across gateway and sidecar; coherent 4-span trees per request; context flows from Envoy to app SDK spans</td>
+            </tr>
+            <tr>
+                <td><strong>Multi-Signal Observability</strong></td>
+                <td><span class="level-badge level-2">2 — OTel-Native</span></td>
+                <td>All three signals flow; logs carry <code>traceId</code>+<code>spanId</code> enabling trace-log correlation; metrics lack shared <code>service.name</code> identity with traces/logs</td>
+            </tr>
+            <tr>
+                <td><strong>Audience &amp; Signal Quality</strong></td>
+                <td><span class="level-badge level-1">1 — OTel-Aligned</span></td>
+                <td>Span names are Envoy-internal; access logs are unstructured strings; 275 metrics with heavy low-level <code>envoy_*</code> noise</td>
+            </tr>
+            <tr>
+                <td><strong>Stability &amp; Change Management</strong></td>
+                <td><span class="level-badge level-1">1 — OTel-Aligned</span></td>
+                <td>Telemetry behavior is documented; no explicit telemetry stability contract; no schema URL on OTLP exports; Prometheus label schemas not versioned</td>
+            </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════ SIGNALS -->
+    <div class="card">
+        <div class="section-title">Signal Status</div>
+        <div class="signals-grid">
+
+            <!-- TRACES -->
+            <div class="signal-card flowing">
+                <div class="signal-icon">🔍</div>
+                <div class="signal-name">Traces</div>
+                <div class="signal-status">✅ Flowing</div>
+                <div class="signal-detail">OTLP gRPC (port 4317) via Envoy's native OpenTelemetry tracing extension. 9 batches, 37+ unique traces captured.</div>
+            </div>
+
+            <!-- METRICS -->
+            <div class="signal-card partial">
+                <div class="signal-icon">📊</div>
+                <div class="signal-name">Metrics</div>
+                <div class="signal-status">⚠️ Partial (Prometheus only)</div>
+                <div class="signal-detail">Prometheus scrape (ports 15014, 15020, 15090). 275 unique metric names. No native OTLP metrics export path.</div>
+            </div>
+
+            <!-- LOGS -->
+            <div class="signal-card flowing">
+                <div class="signal-icon">📋</div>
+                <div class="signal-name">Logs</div>
+                <div class="signal-status">✅ Flowing</div>
+                <div class="signal-detail">OTLP gRPC (port 4317) via Envoy Access Log Service (ALS). 7 batches, 88 log records with <code>traceId</code>/<code>spanId</code>.</div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════ DIMENSIONS -->
+    <div class="section-title" style="margin-top:8px;">Dimension Details</div>
+
+    <!-- 1. Integration Surface -->
+    <div class="dimension-section">
+        <details open>
+            <summary>
+                <span class="level-badge level-2">2</span>
+                <span class="dim-title">Integration Surface</span>
+                <span class="dim-summary">OTLP for traces &amp; logs; Prometheus-only for metrics</span>
+                <span class="summary-arrow">▶</span>
+            </summary>
+            <div class="dim-content">
+                <h4>What we observed</h4>
+                <p>
+                    Istio exports traces and access logs via OTLP gRPC directly to an OTel Collector using the <code>meshConfig.extensionProviders</code> configuration with the <code>opentelemetry</code> and <code>envoyOtelAls</code> extension types. Metrics are exposed only as Prometheus endpoints on ports 15014 (istiod), 15090 (Envoy sidecars), and 15020 (ingress gateway) — there is currently no native OTLP metrics export. Configuration is managed through Istio's own <code>Telemetry</code> CR (<code>telemetry.istio.io/v1</code>), not <code>OTEL_*</code> environment variables, which is appropriate for a mesh-level infrastructure component.
+                </p>
+
+                <h4>What's working well</h4>
+                <ul>
+                    <li>Traces and logs connect directly to an existing OTel Collector on port 4317 — no adapters, bridges, or custom sidecars required.</li>
+                    <li>OpenTelemetry is explicitly documented as the <em>recommended</em> tracing backend, preferred over legacy Zipkin/Jaeger providers.</li>
+                    <li>The <code>Telemetry</code> CR provides a clean, Kubernetes-native, namespace-scoped configuration API that is more ergonomic than the older <code>EnvoyFilter</code> approach.</li>
+                    <li>Sampling rate is configurable per-namespace via <code>randomSamplingPercentage</code> in the <code>Telemetry</code> CR.</li>
+                </ul>
+
+                <h4>Opportunities</h4>
+                <div class="opportunity-box">
+                    <strong>Add native OTLP metrics export</strong> — The absence of OTLP metrics export forces a parallel Prometheus scraping pipeline alongside OTLP push for traces and logs. Adding an opt-in OTLP metrics exporter (even alongside Prometheus) would unify the integration model and unlock <code>service.name</code>-based correlation between metrics and traces.
+                </div>
+                <div class="opportunity-box">
+                    <strong>Document the split integration model</strong> — Istio's documentation does not explicitly explain that traces/logs use OTLP push while metrics require Prometheus pull. A clear "telemetry architecture" page describing this split, and guidance for configuring both pipelines together, would reduce operator confusion.
+                </div>
+
+                <h4>Checklist</h4>
+                <ul class="checklist">
+                    <li><span class="check-pass">✅</span> OTLP export supported for traces and logs</li>
+                    <li><span class="check-pass">✅</span> Users connect to an existing OTel Collector without adapters (just configure the service address)</li>
+                    <li><span class="check-pass">✅</span> OpenTelemetry documented as the recommended path for traces</li>
+                    <li><span class="check-pass">✅</span> Legacy Zipkin/Jaeger providers remain available but are not the default recommendation</li>
+                    <li><span class="check-fail">❌</span> Metrics require Prometheus scraping — no OTLP metrics export path</li>
+                    <li><span class="check-fail">❌</span> Configuration is not via <code>OTEL_*</code> env vars but via Istio's own <code>meshConfig</code> API</li>
+                    <li><span class="check-fail">❌</span> Telemetry configuration is inconsistent across signals (OTLP for traces/logs, Prometheus for metrics)</li>
+                </ul>
+            </div>
+        </details>
+    </div>
+
+    <!-- 2. Semantic Conventions -->
+    <div class="dimension-section">
+        <details>
+            <summary>
+                <span class="level-badge level-1">1</span>
+                <span class="dim-title">Semantic Conventions</span>
+                <span class="dim-summary">Deprecated HTTP attributes; proprietary Prometheus label schemas; unstructured log bodies</span>
+                <span class="summary-arrow">▶</span>
+            </summary>
+            <div class="dim-content">
+                <h4>What we observed</h4>
+                <p>
+                    Envoy emits HTTP span attributes using the pre-1.21 OpenTelemetry conventions, all of which are now deprecated. Attributes such as <code>http.method</code>, <code>http.status_code</code>, <code>http.url</code>, <code>http.protocol</code>, <code>net.host.ip</code>, <code>net.host.port</code>, <code>net.peer.ip</code>, <code>net.peer.port</code>, and <code>net.transport</code> are present — but none of their current stable equivalents (<code>http.request.method</code>, <code>http.response.status_code</code>, <code>url.full</code>, <code>server.address</code>, <code>server.port</code>, <code>network.peer.address</code>) appear. Span kinds are correctly applied (SERVER/CLIENT). Prometheus metrics use Istio's proprietary label schema (<code>source_workload</code>, <code>destination_workload</code>, <code>response_flags</code>, etc.) with no alignment to OTel HTTP semconv. Access logs are unstructured text strings with no severity, no scope name, and no structured attributes.
+                </p>
+
+                <h4>What's working well</h4>
+                <ul>
+                    <li>Span kinds are correctly set: gateway inbound spans are <code>SPAN_KIND_SERVER</code>, gateway outbound spans are <code>SPAN_KIND_CLIENT</code>, sidecar inbound spans are <code>SPAN_KIND_SERVER</code> — enabling tooling to interpret the trace topology correctly.</li>
+                    <li><code>traceId</code> and <code>spanId</code> are correctly set as proper OTLP fields on log records (not as string attributes), enabling native trace-log correlation in OTel-aware backends.</li>
+                    <li>Envoy-proprietary attributes like <code>istio.canonical_service</code>, <code>upstream_cluster</code>, and <code>response_flags</code> provide useful mesh-specific context for Istio operators, even if they lack OTel equivalents.</li>
+                </ul>
+
+                <h4>Opportunities</h4>
+                <div class="opportunity-box">
+                    <strong>Migrate Envoy HTTP attributes to current stable semconv</strong> — Updating from <code>http.method</code> → <code>http.request.method</code>, <code>http.status_code</code> → <code>http.response.status_code</code>, <code>http.url</code> → <code>url.full</code>, and <code>net.host.*</code>/<code>net.peer.*</code> to <code>server.*</code>/<code>network.*</code> equivalents would bring Istio to Level 2 on this dimension. This is an upstream Envoy dependency that Istio can advocate for or contribute.
+                </div>
+                <div class="opportunity-box">
+                    <strong>Structure access log records</strong> — Currently, the ALS log body is a raw Envoy format string (e.g., <code>[2026-05-07T16:06:35.689Z] "GET / HTTP/1.1" 200 - via_upstream...</code>). Emitting structured log attributes (<code>http.request.method</code>, <code>http.response.status_code</code>, <code>url.path</code>, <code>http.request.duration</code>) and setting a meaningful <code>SeverityNumber</code> would transform access logs into a first-class structured signal.
+                </div>
+                <div class="opportunity-box">
+                    <strong>Add <code>schemaUrl</code> to OTLP exports</strong> — No <code>schemaUrl</code> is currently set on Envoy's OTLP trace or log exports. Adding the appropriate schema URL (e.g., <code>https://opentelemetry.io/schemas/1.26.0</code>) would allow backends to correctly interpret and migrate attribute names.
+                </div>
+
+                <h4>Checklist</h4>
+                <ul class="checklist">
+                    <li><span class="check-pass">✅</span> OTLP protocol used for traces and logs</li>
+                    <li><span class="check-pass">✅</span> Span kinds correctly applied (SERVER/CLIENT)</li>
+                    <li><span class="check-pass">✅</span> <code>traceId</code>/<code>spanId</code> set as proper OTLP fields on log records</li>
+                    <li><span class="check-fail">❌</span> All HTTP span attributes use deprecated conventions (<code>http.method</code>, <code>http.status_code</code>, <code>http.url</code>)</li>
+                    <li><span class="check-fail">❌</span> No current stable semconv attributes present (<code>http.request.method</code>, <code>http.response.status_code</code>, <code>url.full</code>)</li>
+                    <li><span class="check-fail">❌</span> Prometheus metric labels do not align with OTel HTTP semantic conventions</li>
+                    <li><span class="check-fail">❌</span> Log body is unstructured text, not structured OTel log semantic conventions</li>
+                    <li><span class="check-fail">❌</span> No <code>schemaUrl</code> on OTLP exports</li>
+                    <li><span class="check-fail">❌</span> Istio-proprietary span attributes (<code>istio.mesh_id</code>, <code>upstream_cluster</code>, <code>response_flags</code>) not documented as semantic extensions</li>
+                </ul>
+            </div>
+        </details>
+    </div>
+
+    <!-- 3. Resource Attributes & Configuration -->
+    <div class="dimension-section">
+        <details>
+            <summary>
+                <span class="level-badge level-1">1</span>
+                <span class="dim-title">Resource Attributes &amp; Configuration</span>
+                <span class="dim-summary">Inconsistent <code>service.name</code> across signals; no <code>service.version</code>; metrics use scrape-job names</span>
+                <span class="summary-arrow">▶</span>
+            </summary>
+            <div class="dim-content">
+                <h4>What we observed</h4>
+                <p>
+                    Envoy sets <code>service.name</code> natively in OTLP trace resource attributes, but the naming is inconsistent: gateway spans use <code>istio-gateway.istio-system</code> (workload + namespace suffix), backend sidecar spans use <code>otel-eval-backend.demo</code> (same pattern), but the backend app SDK spans use <code>otel-eval-backend</code> (no namespace suffix). This creates three different <code>service.name</code> values for two conceptual services. Metrics use scrape-job names (<code>istio-envoy-sidecars</code>, <code>istio-ingressgateway</code>), entirely disconnected from workload identity. Logs have no <code>service.name</code> at all. <code>service.version</code> and <code>service.instance.id</code> are absent across all signals.
+                </p>
+
+                <h4>What's working well</h4>
+                <ul>
+                    <li><code>service.name</code> is set natively by Envoy on trace resource attributes — no collector-side enrichment required for basic service identification in traces.</li>
+                    <li><code>telemetry.sdk.name=envoy</code>, <code>telemetry.sdk.language=cpp</code>, and <code>telemetry.sdk.version</code> correctly identify the instrumentation layer on trace resources.</li>
+                    <li>After collector enrichment via <code>k8sattributes</code>, <code>k8s.pod.name</code> and <code>k8s.namespace.name</code> provide a workable cross-signal correlation key for traces and logs (though not metrics).</li>
+                </ul>
+
+                <h4>Opportunities</h4>
+                <div class="opportunity-box">
+                    <strong>Unify <code>service.name</code> across signals</strong> — Adopting a consistent convention (e.g., the Kubernetes workload name without namespace suffix, with <code>service.namespace</code> as a separate attribute) and propagating it to metrics resources would enable metric-to-trace correlation. At minimum, documenting the recommended join key (e.g., <code>k8s.pod.name</code>) for cross-signal correlation would help operators build working dashboards.
+                </div>
+                <div class="opportunity-box">
+                    <strong>Propagate <code>service.version</code> from canonical revision</strong> — Istio already tracks <code>istio.canonical_revision</code> on spans and <code>source_canonical_revision</code>/<code>destination_canonical_revision</code> on metrics. Mapping this to <code>service.version</code> as a resource attribute on OTLP exports would enable version-based traffic analysis in OTel-native tooling without any new data collection.
+                </div>
+                <div class="opportunity-box">
+                    <strong>Set <code>service.name</code> on log resources</strong> — ALS log records currently have no <code>service.name</code> on the resource (only <code>traceId</code>/<code>spanId</code> as OTLP fields). Propagating the same <code>service.name</code> used in traces to log resources would enable service-level log filtering and correlation in backends.
+                </div>
+
+                <h4>Checklist</h4>
+                <ul class="checklist">
+                    <li><span class="check-pass">✅</span> <code>service.name</code> is set on trace resource (by Envoy natively)</li>
+                    <li><span class="check-pass">✅</span> <code>telemetry.sdk.name=envoy</code> correctly identifies the instrumentation</li>
+                    <li><span class="check-fail">❌</span> <code>service.name</code> is inconsistent: namespace-appended for Envoy spans, not appended for app SDK spans</li>
+                    <li><span class="check-fail">❌</span> <code>service.name</code> is absent from log resource attributes</li>
+                    <li><span class="check-fail">❌</span> <code>service.name</code> in metrics uses scrape job names, not workload identity</li>
+                    <li><span class="check-fail">❌</span> <code>service.version</code> absent across all signals</li>
+                    <li><span class="check-fail">❌</span> <code>service.instance.id</code> absent from traces and logs</li>
+                    <li><span class="check-fail">❌</span> <code>OTEL_SERVICE_NAME</code> / <code>OTEL_RESOURCE_ATTRIBUTES</code> not respected (by design, but still a gap)</li>
+                    <li><span class="check-fail">❌</span> Identity cannot be correlated across traces, metrics, and logs by <code>service.name</code></li>
+                </ul>
+            </div>
+        </details>
+    </div>
+
+    <!-- 4. Trace Modeling & Context Propagation -->
+    <div class="dimension-section">
+        <details>
+            <summary>
+                <span class="level-badge level-2">2</span>
+                <span class="dim-title">Trace Modeling &amp; Context Propagation</span>
+                <span class="dim-summary">W3C Trace Context propagated correctly; coherent 4-layer span trees; Envoy-to-SDK context flow confirmed</span>
+                <span class="summary-arrow">▶</span>
+            </summary>
+            <div class="dim-content">
+                <h4>What we observed</h4>
+                <p>
+                    A complete end-to-end trace for a single HTTP request through the Istio mesh produces a coherent 9-span tree. The trace spans three services and four instrumentation layers: (1) Istio Gateway Envoy inbound SERVER span (root), (2) Istio Gateway Envoy outbound CLIENT span (egress to backend), (3) Backend sidecar Envoy inbound SERVER span, and (4) Backend Node.js OTel SDK HTTP server span plus Express middleware spans. W3C Trace Context (<code>traceparent</code>/<code>tracestate</code>) is propagated correctly across all boundaries, including from Envoy into the application's inbound request headers where the OTel SDK picks it up as the parent context. 100% sampling is configurable via <code>randomSamplingPercentage: 100</code> in the <code>Telemetry</code> CR.
+                </p>
+                <p style="margin-top:8px; font-family: 'SFMono-Regular', Consolas, monospace; font-size: 12px; background:#edf2f7; padding:12px; border-radius:8px; line-height:1.8;">
+                    [istio-gateway.istio-system] otel-eval-backend.demo.svc.cluster.local:3000/* (SERVER, ROOT)<br>
+                    &nbsp;&nbsp;└─ [istio-gateway.istio-system] router outbound|...; egress (CLIENT)<br>
+                    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└─ [otel-eval-backend.demo] otel-eval-backend.demo.svc.cluster.local:3000/* (SERVER)<br>
+                    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└─ [otel-eval-backend] GET / (SERVER)<br>
+                    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;├─ middleware - query (INTERNAL)<br>
+                    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;├─ middleware - expressInit (INTERNAL)<br>
+                    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;├─ middleware - jsonParser (INTERNAL)<br>
+                    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;├─ middleware - &lt;anonymous&gt; (INTERNAL)<br>
+                    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└─ request handler - / (INTERNAL)
+                </p>
+
+                <h4>What's working well</h4>
+                <ul>
+                    <li>W3C Trace Context propagated correctly across all mesh boundaries — Envoy-to-Envoy and Envoy-to-OTel-SDK.</li>
+                    <li>Parent-child relationships are correct throughout the entire span tree. The sidecar SERVER span correctly becomes the parent of the app SDK SERVER span.</li>
+                    <li>Span kinds correctly applied (SERVER for inbound, CLIENT for outbound) across all Envoy layers.</li>
+                    <li>The <code>opentelemetry</code> extension provider defaults to W3C Trace Context (as opposed to B3 used by the legacy Zipkin provider), ensuring modern compatibility.</li>
+                </ul>
+
+                <h4>Opportunities</h4>
+                <div class="opportunity-box">
+                    <strong>Improve Envoy span names for human readability</strong> — Span names like <code>otel-eval-backend.demo.svc.cluster.local:3000/*</code> and <code>router outbound|3000||otel-eval-backend.demo.svc.cluster.local; egress</code> expose Envoy routing internals. Configurable span name templates (e.g., <code>{method} {service}</code>) would make traces more readable for application developers.
+                </div>
+                <div class="opportunity-box">
+                    <strong>Document trace topology decisions</strong> — There is no official documentation explaining when Envoy creates spans, what constitutes a root span, or how the 4-layer topology behaves under retries, circuit breaking, or traffic shifting. Publishing trace modeling guidance would help operators interpret complex traces correctly.
+                </div>
+
+                <h4>Checklist</h4>
+                <ul class="checklist">
+                    <li><span class="check-pass">✅</span> W3C Trace Context propagated correctly across all mesh boundaries</li>
+                    <li><span class="check-pass">✅</span> Parent-child relationships correct for gateway → sidecar → app chain</li>
+                    <li><span class="check-pass">✅</span> Span kinds correctly applied (SERVER for inbound, CLIENT for outbound)</li>
+                    <li><span class="check-pass">✅</span> Context propagation works across Envoy-to-Envoy and Envoy-to-SDK boundaries</li>
+                    <li><span class="check-pass">✅</span> 100% sampling configurable via <code>Telemetry</code> CR</li>
+                    <li><span class="check-pass">✅</span> Traces represent a coherent end-to-end view of request flow</li>
+                    <li><span class="check-warn">⚠️</span> Span names are Envoy-internal (see Audience &amp; Signal Quality dimension)</li>
+                    <li><span class="check-fail">❌</span> No explicit documentation of trace modeling decisions (when spans are created, what constitutes a root span)</li>
+                </ul>
+            </div>
+        </details>
+    </div>
+
+    <!-- 5. Multi-Signal Observability -->
+    <div class="dimension-section">
+        <details>
+            <summary>
+                <span class="level-badge level-2">2</span>
+                <span class="dim-title">Multi-Signal Observability</span>
+                <span class="dim-summary">All three signals flowing; trace-log correlation confirmed; metrics lack shared identity with traces/logs</span>
+                <span class="summary-arrow">▶</span>
+            </summary>
+            <div class="dim-content">
+                <h4>What we observed</h4>
+                <p>
+                    All three signals are present and flowing: 37+ unique traces, 275 unique metric names, and 88 access log records. Trace-log correlation is confirmed and working — every ALS log record carries <code>traceId</code> and <code>spanId</code> as native OTLP fields. Verified: log record with <code>traceId=427512ae3f1a5f637ef80f232fb29e0e</code> and <code>spanId=7d5d2a97633c3f5e</code> matches exactly to the Envoy sidecar SERVER span in the trace data, enabling zero-configuration trace-to-log pivoting. Trace-to-metric correlation is not achievable via shared identity: traces use <code>service.name=otel-eval-backend.demo</code> while metrics use <code>service.name=istio-envoy-sidecars</code>. Correlation via <code>k8s.pod.name</code> is possible after collector enrichment but requires operator knowledge of the enrichment pipeline.
+                </p>
+
+                <h4>What's working well</h4>
+                <ul>
+                    <li>Trace-log correlation is automatic and zero-configuration — every Envoy access log record carries the exact <code>traceId</code> and <code>spanId</code> of the corresponding Envoy span.</li>
+                    <li>The <code>Telemetry</code> CR configures both tracing and access logging together, ensuring the two signals are designed as a coherent pair.</li>
+                    <li>All three signals are first-class — traces and logs via OTLP push, metrics via Prometheus pull — with no signal requiring a custom adapter or sidecar.</li>
+                </ul>
+
+                <h4>Opportunities</h4>
+                <div class="opportunity-box">
+                    <strong>Unify metric identity with trace identity</strong> — The <code>service.name</code> in traces (<code>otel-eval-backend.demo</code>) does not match metrics (<code>istio-envoy-sidecars</code>). Adopting workload-based metric resource identity would enable the "pivot from metric alert to trace" workflow that operators expect in OTel-native backends.
+                </div>
+                <div class="opportunity-box">
+                    <strong>Document cross-signal correlation guidance</strong> — Istio's documentation does not explain how to correlate metrics with traces (what attributes to join on). Publishing a guide on using <code>k8s.pod.name</code> as the cross-signal join key — and on configuring backends (Grafana, Jaeger, etc.) to leverage trace-log correlation — would significantly improve the operator experience.
+                </div>
+
+                <h4>Checklist</h4>
+                <ul class="checklist">
+                    <li><span class="check-pass">✅</span> All three signals are first-class and flowing</li>
+                    <li><span class="check-pass">✅</span> Logs carry <code>traceId</code> and <code>spanId</code> enabling trace-log correlation</li>
+                    <li><span class="check-pass">✅</span> Trace-log correlation is automatic and verified end-to-end</li>
+                    <li><span class="check-pass">✅</span> Signals are designed together (the <code>Telemetry</code> CR configures both tracing and access logging)</li>
+                    <li><span class="check-fail">❌</span> Metrics cannot be correlated with traces via <code>service.name</code> — identity is fundamentally different</li>
+                    <li><span class="check-fail">❌</span> Mixed collection model (OTLP push for traces/logs, Prometheus pull for metrics) adds operational complexity</li>
+                    <li><span class="check-fail">❌</span> No guidance in Istio docs on how to correlate metrics with traces (what attributes to join on)</li>
+                </ul>
+            </div>
+        </details>
+    </div>
+
+    <!-- 6. Audience & Signal Quality -->
+    <div class="dimension-section">
+        <details>
+            <summary>
+                <span class="level-badge level-1">1</span>
+                <span class="dim-title">Audience &amp; Signal Quality</span>
+                <span class="dim-summary">Envoy-internal span names; unstructured access logs; 70% of metrics are low-level Envoy internals</span>
+                <span class="summary-arrow">▶</span>
+            </summary>
+            <div class="dim-content">
+                <h4>What we observed</h4>
+                <p>
+                    Envoy span names encode internal routing concepts rather than user-meaningful operations: the inbound SERVER span is named <code>otel-eval-backend.demo.svc.cluster.local:3000/*</code> (full Kubernetes DNS FQDN + wildcard path), and the outbound CLIENT span is named <code>router outbound|3000||otel-eval-backend.demo.svc.cluster.local; egress</code> (Envoy cluster routing syntax). Of 275 unique metric names, 193 (~70%) are <code>envoy_*</code> internal counters (circuit breakers, HTTP/2 frame counters, cluster manager internals) while 56 are operationally relevant <code>istio_*</code> metrics. Access logs are unstructured strings with no severity (<code>UNSET</code> for all 88 records), no scope name, and no structured attributes — requiring regex parsing to extract method, path, status code, and latency.
+                </p>
+
+                <h4>What's working well</h4>
+                <ul>
+                    <li>The <code>istio_*</code> metric family (<code>istio_requests_total</code>, <code>istio_request_duration_milliseconds</code>, <code>istio_request_bytes</code>) is well-designed for RED monitoring with rich source/destination workload, namespace, response code, and security policy dimensions.</li>
+                    <li>Trace-log correlation works without customization, enabling operators to jump from a specific span to its access log entry and vice versa.</li>
+                    <li>Span kinds are correct, helping trace visualization tools (Jaeger, Tempo, etc.) render the service map and call hierarchy accurately.</li>
+                </ul>
+
+                <h4>Opportunities</h4>
+                <div class="opportunity-box">
+                    <strong>Improve Envoy span naming</strong> — Implementing configurable span name templates (e.g., <code>{method} {route}</code> for server spans, <code>{method} {service}</code> for client spans) would make traces immediately interpretable by application developers without requiring Istio/Envoy internals knowledge.
+                </div>
+                <div class="opportunity-box">
+                    <strong>Provide metric filtering guidance or defaults</strong> — The default collection of all 193 <code>envoy_*</code> metrics creates significant noise. Publishing a recommended metric allowlist for operators (or providing a pre-configured OTel Collector filter pipeline) would help users focus on the 56 operationally relevant <code>istio_*</code> metrics.
+                </div>
+                <div class="opportunity-box">
+                    <strong>Structure access log attributes</strong> — Emitting structured log attributes (<code>http.request.method</code>, <code>http.response.status_code</code>, <code>url.path</code>, <code>http.request.duration</code>) alongside or instead of the raw format string — and setting a meaningful <code>SeverityNumber</code> (e.g., ERROR for 5xx, INFO for 2xx) — would transform access logs from a raw dump into a queryable, alertable signal.
+                </div>
+
+                <h4>Checklist</h4>
+                <ul class="checklist">
+                    <li><span class="check-pass">✅</span> <code>istio_requests_total</code>, <code>istio_request_duration_milliseconds</code> are user-oriented operational metrics</li>
+                    <li><span class="check-pass">✅</span> Span kinds are correct (helps tooling interpret spans)</li>
+                    <li><span class="check-pass">✅</span> Trace-log correlation works without customization</li>
+                    <li><span class="check-fail">❌</span> Span names expose Envoy routing internals, not logical operations</li>
+                    <li><span class="check-fail">❌</span> 193 <code>envoy_*</code> metrics create significant noise; no filtering by default</li>
+                    <li><span class="check-fail">❌</span> Access logs are unstructured strings with no severity, no scope, no attributes</li>
+                    <li><span class="check-fail">❌</span> No documentation on which metrics are "operational" vs "debug"</li>
+                    <li><span class="check-fail">❌</span> Defaults produce high-volume, low-signal telemetry in production</li>
+                </ul>
+            </div>
+        </details>
+    </div>
+
+    <!-- 7. Stability & Change Management -->
+    <div class="dimension-section">
+        <details>
+            <summary>
+                <span class="level-badge level-1">1</span>
+                <span class="dim-title">Stability &amp; Change Management</span>
+                <span class="dim-summary">Telemetry documented; no explicit stability contract; no schemaUrl on OTLP exports; no telemetry changelog</span>
+                <span class="summary-arrow">▶</span>
+            </summary>
+            <div class="dim-content">
+                <h4>What we observed</h4>
+                <p>
+                    Istio has dedicated documentation pages for distributed tracing with OpenTelemetry, metrics (with label definitions for <code>istio_requests_total</code> and related metrics), and access logging. The <code>Telemetry</code> CR API is versioned (<code>telemetry.istio.io/v1</code>) and follows Istio's API stability guarantees. Major telemetry changes (e.g., the migration from <code>EnvoyFilter</code> to the unified <code>Telemetry</code> CR) were documented with migration guidance. However, no <code>schemaUrl</code> is set on any OTLP export from Envoy (traces or logs). Span names and attributes from Envoy can change with Envoy upgrades without explicit notice in Istio release notes. There is no dedicated telemetry changelog section and no explicit policy distinguishing "stable" from "experimental" telemetry fields.
+                </p>
+
+                <h4>What's working well</h4>
+                <ul>
+                    <li>The <code>Telemetry</code> CR API (<code>telemetry.istio.io/v1</code>) is versioned and documented — operators can rely on the configuration API being stable.</li>
+                    <li>The <code>istio_*</code> Prometheus metric schema is de facto stable and documented with label definitions — operators can build dashboards and alerts without fear of breaking changes.</li>
+                    <li>Major telemetry migration paths (e.g., <code>EnvoyFilter</code> → <code>Telemetry</code> CR) were communicated over multiple releases with migration guidance.</li>
+                </ul>
+
+                <h4>Opportunities</h4>
+                <div class="opportunity-box">
+                    <strong>Add <code>schemaUrl</code> to OTLP trace and log exports</strong> — Setting the appropriate OpenTelemetry schema URL on Envoy's OTLP exports would allow backends to correctly interpret attribute versions and automatically migrate deprecated attribute names. This is a low-effort change with significant benefit for tooling compatibility.
+                </div>
+                <div class="opportunity-box">
+                    <strong>Publish an explicit telemetry stability contract</strong> — Documenting which telemetry fields are "stable" (guaranteed not to change without notice) vs "experimental" would give operators confidence when building production dashboards and alerts. This could be a simple table in the metrics/tracing reference docs.
+                </div>
+                <div class="opportunity-box">
+                    <strong>Add a dedicated telemetry changelog section to release notes</strong> — Span attribute changes from Envoy upgrades are not always called out explicitly in Istio release notes. A dedicated "Telemetry changes" section would help operators proactively update their dashboards, alert rules, and log parsers when upgrading Istio.
+                </div>
+
+                <h4>Checklist</h4>
+                <ul class="checklist">
+                    <li><span class="check-pass">✅</span> Telemetry configuration API (<code>Telemetry</code> CR) is versioned and documented</li>
+                    <li><span class="check-pass">✅</span> Major telemetry changes communicated with migration guidance</li>
+                    <li><span class="check-pass">✅</span> Prometheus metric schema is documented</li>
+                    <li><span class="check-fail">❌</span> No <code>schemaUrl</code> on OTLP trace/log exports</li>
+                    <li><span class="check-fail">❌</span> No explicit telemetry stability contract separate from API stability</li>
+                    <li><span class="check-fail">❌</span> Span names and attributes from Envoy can change with Envoy upgrades without explicit notice</li>
+                    <li><span class="check-fail">❌</span> No distinction between "stable" and "experimental" telemetry fields</li>
+                    <li><span class="check-fail">❌</span> No dedicated telemetry changelog section in release notes</li>
+                </ul>
+            </div>
+        </details>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════ KEY TAKEAWAYS -->
+    <div class="card" style="margin-top:32px;">
+        <div class="section-title">Key Takeaways</div>
+        <div class="takeaways-grid">
+            <div class="takeaway-box strengths">
+                <h3>🟢 Strengths</h3>
+                <ul>
+                    <li><strong>Excellent trace-log correlation</strong> — Every Envoy access log record carries <code>traceId</code> and <code>spanId</code> as native OTLP fields, enabling zero-configuration trace-log pivoting out of the box.</li>
+                    <li><strong>Coherent end-to-end trace topology</strong> — The 4-layer span tree (gateway SERVER → gateway CLIENT → sidecar SERVER → app SDK spans) accurately models request flow. W3C Trace Context propagation works correctly across all Envoy-to-Envoy and Envoy-to-SDK boundaries.</li>
+                    <li><strong>Clean OTLP integration for traces and logs</strong> — The <code>meshConfig.extensionProviders</code> + <code>Telemetry</code> CR configuration model integrates cleanly with standard OTel Collectors. No adapters or custom bridges needed.</li>
+                    <li><strong>Rich <code>istio_*</code> operational metrics</strong> — <code>istio_requests_total</code>, <code>istio_request_duration_milliseconds</code>, and related metrics provide well-labeled RED metrics directly useful for SLO monitoring and traffic analysis.</li>
+                </ul>
+            </div>
+            <div class="takeaway-box improvements">
+                <h3>🟡 Priority Improvements</h3>
+                <ul>
+                    <li><strong>Migrate Envoy HTTP attributes to current stable semconv</strong> — Update from deprecated <code>http.method</code>/<code>http.status_code</code>/<code>http.url</code> to <code>http.request.method</code>/<code>http.response.status_code</code>/<code>url.full</code>. This upstream Envoy change would move Semantic Conventions from Level 1 to Level 2.</li>
+                    <li><strong>Unify service identity across signals</strong> — Adopt a consistent <code>service.name</code> convention across traces, metrics, and logs. Document the recommended join key (<code>k8s.pod.name</code>) for cross-signal correlation in the interim.</li>
+                    <li><strong>Add native OTLP metrics export</strong> — An opt-in OTLP metrics exporter alongside Prometheus would unify the integration model and enable metric-to-trace correlation by shared <code>service.name</code>.</li>
+                    <li><strong>Structure access logs</strong> — Emit structured log attributes (method, path, status code, duration) and a meaningful <code>SeverityNumber</code> to transform access logs from raw strings into a queryable, alertable signal.</li>
+                </ul>
+            </div>
+        </div>
+        <div class="takeaway-box observations" style="margin-top:16px;">
+            <h3>🔵 Notable Observations</h3>
+            <ul>
+                <li><strong>Envoy self-tracing</strong> — The Envoy sidecar generates spans for its own outbound calls to the OTel Collector (e.g., <code>otel-collector-opentelemetry-collector.opentelemetry.svc.cluster.local:4318/*</code>) when the collector is inside the mesh. These "meta-spans" appear in trace data and can confuse operators. Istio's documentation does not mention this behavior.</li>
+                <li><strong>Three <code>service.name</code> values for two services</strong> — The same backend service appears as <code>otel-eval-backend.demo</code> (Envoy sidecar spans), <code>otel-eval-backend</code> (Node.js SDK spans), and <code>istio-envoy-sidecars</code> (Prometheus metrics) — a significant barrier to unified service-level observability.</li>
+                <li><strong>275 metrics, 70% Envoy internals</strong> — Default metric collection captures all Envoy internal stats (<code>envoy_cluster_http2_*</code>, <code>envoy_cluster_circuit_breakers_*</code>, etc.) alongside the operationally relevant <code>istio_*</code> metrics. Most operators will need to filter this down, but Istio provides no guidance on which metrics to keep.</li>
+                <li><strong>No <code>service.version</code> despite tracking canonical revision</strong> — Istio already has <code>istio.canonical_revision</code> on spans and <code>source_canonical_revision</code> on metrics. Mapping this existing data to <code>service.version</code> as a resource attribute would be a low-effort, high-value improvement.</li>
+            </ul>
+        </div>
+    </div>
+
+</div><!-- /container -->
+
+<footer class="site-footer">
+    <p>
+        Evaluated using the <strong>OpenTelemetry Support Maturity Model for CNCF Projects</strong> (draft) ·
+        Istio <a href="https://github.com/istio/istio">github.com/istio/istio</a> ·
+        Telemetry collected in kind cluster (otel-eval-istio) with OTel Collector file exporter · Istio v1.29.2 · Evaluated 2026-05-07
+    </p>
+</footer>
+
+<script>
+    const DIMENSION_SCORES = [
+        /* Integration Surface        */ 2,
+        /* Semantic Conventions       */ 1,
+        /* Resource Attrs & Config    */ 1,
+        /* Trace Modeling & Propagation */ 2,
+        /* Multi-Signal Observability */ 2,
+        /* Audience & Signal Quality  */ 1,
+        /* Stability & Change Mgmt    */ 1,
+    ];
+
+    const PROJECT_LABEL = 'Istio v1.29.2';
+
+    const ctx = document.getElementById('radarChart').getContext('2d');
+    new Chart(ctx, {
+        type: 'radar',
+        data: {
+            labels: [
+                'Integration Surface',
+                'Semantic Conventions',
+                'Resource Attrs\n& Configuration',
+                'Trace Modeling\n& Propagation',
+                'Multi-Signal\nObservability',
+                'Audience &\nSignal Quality',
+                'Stability &\nChange Mgmt'
+            ],
+            datasets: [{
+                label: PROJECT_LABEL,
+                data: DIMENSION_SCORES,
+                backgroundColor: 'rgba(49, 130, 206, 0.15)',
+                borderColor: 'rgba(49, 130, 206, 0.9)',
+                borderWidth: 2.5,
+                pointBackgroundColor: 'rgba(49, 130, 206, 1)',
+                pointBorderColor: '#fff',
+                pointHoverBackgroundColor: '#fff',
+                pointHoverBorderColor: 'rgba(49, 130, 206, 1)',
+                pointRadius: 5,
+                pointHoverRadius: 7,
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            scales: {
+                r: {
+                    min: 0,
+                    max: 3,
+                    ticks: {
+                        stepSize: 1,
+                        callback: (v) => ['Instrumented','Aligned','Native','Optimized'][v] || v,
+                        font: { size: 10 },
+                        color: '#718096',
+                        backdropColor: 'transparent',
+                    },
+                    grid: { color: 'rgba(0,0,0,0.08)' },
+                    angleLines: { color: 'rgba(0,0,0,0.1)' },
+                    pointLabels: {
+                        font: { size: 12, weight: '600' },
+                        color: '#2d3748',
+                    }
+                }
+            },
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    callbacks: {
+                        label: (ctx) => {
+                            const names = ['Instrumented','OTel-Aligned','OTel-Native','OTel-Optimized'];
+                            return ` Level ${ctx.raw} — ${names[ctx.raw]}`;
+                        }
+                    }
+                }
+            }
+        }
+    });
+</script>
+</body>
+</html>

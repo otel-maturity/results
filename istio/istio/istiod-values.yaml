@@ -1,0 +1,44 @@
+# istio/istiod chart values for OTel evaluation
+# Version: 1.29.2
+
+meshConfig:
+  # Enable access logging (default is disabled in Istio 1.x)
+  accessLogFile: /dev/stdout
+
+  # Configure OTel extension providers for traces and access logs
+  extensionProviders:
+    - name: otel-tracing
+      opentelemetry:
+        port: 4317
+        service: otel-collector-opentelemetry-collector.opentelemetry.svc.cluster.local
+    - name: otel-als
+      envoyOtelAls:
+        port: 4317
+        service: otel-collector-opentelemetry-collector.opentelemetry.svc.cluster.local
+
+  # Enable Prometheus stats merging (merges app + envoy metrics on port 15020)
+  enablePrometheusMerge: true
+
+  # Default proxy config
+  defaultConfig:
+    # Tracing is configured via Telemetry API, not here
+    tracing: {}
+
+pilot:
+  # Resource limits for kind cluster
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 512Mi
+
+global:
+  # Proxy (Envoy sidecar) configuration
+  proxy:
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        memory: 256Mi

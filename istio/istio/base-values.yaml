@@ -1,0 +1,3 @@
+# istio/base chart values
+# Installs CRDs and cluster-scoped resources
+# No special overrides needed for a basic installation
