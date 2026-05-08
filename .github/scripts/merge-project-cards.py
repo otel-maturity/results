@@ -1,0 +1,190 @@
+#!/usr/bin/env python3
+"""Merge <project>/project-card.html files into projects.html.
+
+Locates `<div class="card-grid" id="card-grid">` in projects.html, finds the
+`<!-- ↓↓↓ INSERT PROJECT CARDS HERE ↓↓↓ -->` marker inside it, and inserts
+each project's card content between the marker and the closing </div>.
+Existing cards (matched by their `chart-<project>` canvas id) are replaced in
+place; new cards are appended.
+
+Usage:
+    merge-project-cards.py <results_dir> <projects_html>
+"""
+import re
+import sys
+from pathlib import Path
+
+START_MARKER = "<!-- ↓↓↓ INSERT PROJECT CARDS HERE ↓↓↓ -->"
+A_OPEN = '<a class="project-card"'
+GRID_OPEN_RE = re.compile(r'<div\s+class="card-grid"[^>]*>')
+DIV_TAG_RE = re.compile(r"<(/?)div\b[^>]*>")
+
+
+def find_projects(results_dir):
+    """Return [(project_name, card_path_or_None)] for each subdirectory."""
+    projects = []
+    for entry in sorted(results_dir.iterdir()):
+        if not entry.is_dir() or entry.name.startswith("."):
+            continue
+        card = entry / "project-card.html"
+        projects.append((entry.name, card if card.is_file() else None))
+    return projects
+
+
+def find_grid_bounds(html):
+    """Return (open_end, close_start) for the card-grid <div>.
+
+    Matches nesting so cards containing <div>...</div> don't trip us up.
+    """
+    m = GRID_OPEN_RE.search(html)
+    if not m:
+        return None
+    open_end = m.end()
+    depth = 1
+    i = open_end
+    while True:
+        tm = DIV_TAG_RE.search(html, i)
+        if not tm:
+            return None
+        if tm.group(1) == "/":
+            depth -= 1
+            if depth == 0:
+                return open_end, tm.start()
+        else:
+            depth += 1
+        i = tm.end()
+
+
+def parse_cards(body):
+    """Return ordered list of (canvas_project_id, block_text) from body.
+
+    A "block" is the optional leading single-line HTML comment + the
+    <a class="project-card">...</a> element + the companion
+    <script>...registerChart('chart-<id>', ...)</script>.
+    """
+    blocks = []
+    i = 0
+    while True:
+        a_pos = body.find(A_OPEN, i)
+        if a_pos == -1:
+            break
+        a_end = body.find("</a>", a_pos)
+        if a_end == -1:
+            break
+        a_end += len("</a>")
+        m = re.match(
+            r"\s*(?:<!--.*?-->\s*)?<script\b[^>]*>.*?</script>",
+            body[a_end:],
+            re.DOTALL,
+        )
+        if not m:
+            i = a_end
+            continue
+        block_end = a_end + m.end()
+        a_block = body[a_pos:a_end]
+        cm = re.search(r'<canvas\s+id=["\']chart-([\w.-]+)["\']', a_block)
+        project_id = cm.group(1) if cm else None
+        # Capture an immediately-preceding single-line comment.
+        start = a_pos
+        c = a_pos - 1
+        while c >= i and body[c] in " \t\n\r":
+            c -= 1
+        if c >= i + 2 and body[c - 2 : c + 1] == "-->":
+            cmt_start = body.rfind("<!--", i, c + 1)
+            if cmt_start != -1 and "\n" not in body[cmt_start : c + 1]:
+                start = cmt_start
+        blocks.append((project_id, body[start:block_end].strip()))
+        i = block_end
+    return blocks
+
+
+def merge(results_dir, projects_html):
+    projects = find_projects(results_dir)
+    if not projects:
+        print(f"no project subdirectories found under {results_dir}")
+        return 0
+
+    cards = []
+    for project, card_path in projects:
+        if card_path is None:
+            print(
+                f"skip: {project} (no project-card.html found at "
+                f"{results_dir / project / 'project-card.html'})"
+            )
+        else:
+            cards.append((project, card_path))
+
+    if not cards:
+        print("no project-card.html files to merge; leaving projects.html untouched")
+        return 0
+
+    html = projects_html.read_text()
+    bounds = find_grid_bounds(html)
+    if not bounds:
+        print(
+            'error: <div class="card-grid"> not found or unbalanced',
+            file=sys.stderr,
+        )
+        return 1
+    grid_open_end, grid_close_start = bounds
+    section = html[grid_open_end:grid_close_start]
+
+    marker_pos = section.find(START_MARKER)
+    if marker_pos == -1:
+        print(
+            f"error: marker not found inside card-grid in {projects_html}",
+            file=sys.stderr,
+        )
+        return 1
+    prefix_end = marker_pos + len(START_MARKER)
+    prefix = section[:prefix_end]
+    body = section[prefix_end:]
+
+    # Preserve the indentation that was sitting in front of </div>.
+    closing_indent_match = re.search(r"\n([ \t]*)\Z", body)
+    closing_indent = closing_indent_match.group(1) if closing_indent_match else ""
+
+    existing = parse_cards(body)
+    order = [pid for pid, _ in existing if pid]
+    by_id = {pid: text for pid, text in existing if pid}
+
+    for project, card_path in cards:
+        new_card = card_path.read_text().strip()
+        if not new_card:
+            print(f"skip: {project} (empty card file)")
+            continue
+        if project in by_id:
+            by_id[project] = new_card
+            print(f"replaced: {project}")
+        else:
+            order.append(project)
+            by_id[project] = new_card
+            print(f"inserted: {project}")
+
+    if order:
+        new_body = "\n\n" + "\n\n".join(by_id[p] for p in order) + "\n\n" + closing_indent
+    else:
+        new_body = "\n\n" + closing_indent
+
+    new_section = prefix + new_body
+    new_html = html[:grid_open_end] + new_section + html[grid_close_start:]
+    if new_html != html:
+        projects_html.write_text(new_html)
+        print(f"wrote: {projects_html}")
+    else:
+        print(f"no changes: {projects_html}")
+    return 0
+
+
+def main():
+    if len(sys.argv) != 3:
+        print(
+            "usage: merge-project-cards.py <results_dir> <projects_html>",
+            file=sys.stderr,
+        )
+        return 2
+    return merge(Path(sys.argv[1]), Path(sys.argv[2]))
+
+
+if __name__ == "__main__":
+    sys.exit(main())

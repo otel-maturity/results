@@ -43,6 +43,11 @@ jobs:
           done
           echo "total reports copied: $copied"
 
+      - name: Merge project cards into projects.html
+        run: |
+          python3 results/.github/scripts/merge-project-cards.py \
+            results site/projects.html
+
       - name: Create pull request
         uses: peter-evans/create-pull-request@v6
         with:
@@ -50,11 +55,14 @@ jobs:
           token: ${{ secrets.OTEL_MATURITY_IO_TOKEN }}
           branch: sync-reports
           delete-branch: true
-          commit-message: "sync project reports from otel-maturity/results"
-          title: "Sync project reports from otel-maturity/results"
+          commit-message: "sync project reports and cards from otel-maturity/results"
+          title: "Sync project reports and cards from otel-maturity/results"
           body: |
-            Automated sync of `<project>/report.html` files from
-            [otel-maturity/results](https://github.com/otel-maturity/results)
-            to `<project>-report.html` in this repo.
+            Automated sync from
+            [otel-maturity/results](https://github.com/otel-maturity/results):
+
+            - Copies `<project>/report.html` to `<project>-report.html`.
+            - Merges `<project>/project-card.html` into `projects.html` at
+              the `<!-- ↓↓↓ INSERT PROJECT CARDS HERE ↓↓↓ -->` marker.
 
             Triggered by commit ${{ github.sha }} on `main`.
