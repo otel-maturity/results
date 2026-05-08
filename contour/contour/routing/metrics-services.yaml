@@ -1,0 +1,39 @@
+## Services exposing Prometheus metrics ports for OTel Collector scraping
+---
+# Exposes Contour control plane metrics (port 8000)
+apiVersion: v1
+kind: Service
+metadata:
+  name: contour-metrics
+  namespace: projectcontour
+  labels:
+    app: contour
+    otel-eval: "true"
+spec:
+  ports:
+    - name: metrics
+      port: 8000
+      targetPort: 8000
+      protocol: TCP
+  selector:
+    app: contour
+  type: ClusterIP
+---
+# Exposes Envoy data plane metrics (port 8002)
+apiVersion: v1
+kind: Service
+metadata:
+  name: envoy-metrics
+  namespace: projectcontour
+  labels:
+    app: envoy
+    otel-eval: "true"
+spec:
+  ports:
+    - name: metrics
+      port: 8002
+      targetPort: 8002
+      protocol: TCP
+  selector:
+    app: envoy
+  type: ClusterIP

@@ -1,0 +1,14 @@
+apiVersion: projectcontour.io/v1
+kind: HTTPProxy
+metadata:
+  name: otel-eval-backend
+  namespace: demo
+spec:
+  virtualhost:
+    fqdn: otel-eval-backend.local
+  routes:
+    - conditions:
+        - prefix: /
+      services:
+        - name: otel-eval-backend
+          port: 3000

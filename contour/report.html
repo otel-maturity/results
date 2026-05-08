@@ -1,0 +1,760 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Contour — OpenTelemetry Maturity Report</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, sans-serif;
+            background: #f8f9fc;
+            color: #1a202c;
+            line-height: 1.6;
+        }
+
+        a { color: #3182ce; text-decoration: none; }
+        a:hover { text-decoration: underline; }
+
+        /* ── Header ── */
+        .site-header {
+            background: linear-gradient(135deg, #1a365d 0%, #2a4a7f 60%, #3182ce 100%);
+            color: white;
+            padding: 48px 32px 40px;
+        }
+        .header-inner { max-width: 960px; margin: 0 auto; }
+        .project-badge {
+            display: inline-flex; align-items: center; gap: 8px;
+            background: rgba(255,255,255,0.15); border-radius: 20px;
+            padding: 4px 14px; font-size: 13px; margin-bottom: 16px;
+        }
+        .project-badge .dot { width: 8px; height: 8px; background: #68d391; border-radius: 50%; }
+        h1 { font-size: 2.2rem; font-weight: 700; margin-bottom: 8px; }
+        .header-meta { font-size: 14px; opacity: 0.8; margin-top: 12px; }
+        .header-meta span { margin-right: 20px; }
+
+        /* ── Layout ── */
+        .container { max-width: 960px; margin: 0 auto; padding: 40px 24px; }
+
+        /* ── Section titles ── */
+        .section-title {
+            font-size: 1.3rem; font-weight: 700; color: #1a365d;
+            border-bottom: 2px solid #bee3f8; padding-bottom: 8px; margin-bottom: 24px;
+        }
+
+        /* ── Card ── */
+        .card {
+            background: white; border-radius: 12px;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.08); padding: 28px;
+            margin-bottom: 28px;
+        }
+
+        /* ── Radar chart ── */
+        .chart-wrap {
+            display: flex; justify-content: center; align-items: center;
+            padding: 16px 0;
+        }
+        .chart-wrap canvas { max-width: 480px; max-height: 480px; }
+
+        /* ── Score legend ── */
+        .score-legend {
+            display: flex; justify-content: center; gap: 24px; flex-wrap: wrap;
+            margin-top: 16px; font-size: 13px;
+        }
+        .score-legend-item { display: flex; align-items: center; gap: 6px; }
+        .score-legend-dot { width: 12px; height: 12px; border-radius: 50%; }
+
+        /* ── Summary table ── */
+        .summary-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+        .summary-table th {
+            background: #ebf8ff; text-align: left; padding: 10px 14px;
+            font-weight: 600; color: #2b6cb0; border-bottom: 2px solid #bee3f8;
+        }
+        .summary-table td { padding: 10px 14px; border-bottom: 1px solid #e2e8f0; vertical-align: top; }
+        .summary-table tr:last-child td { border-bottom: none; }
+        .summary-table tr:hover td { background: #f7fafc; }
+
+        .level-badge {
+            display: inline-block; padding: 2px 10px; border-radius: 12px;
+            font-size: 12px; font-weight: 700; white-space: nowrap;
+        }
+        .level-0 { background: #fff5f5; color: #c53030; border: 1px solid #feb2b2; }
+        .level-1 { background: #fffaf0; color: #c05621; border: 1px solid #fbd38d; }
+        .level-2 { background: #ebf8ff; color: #2b6cb0; border: 1px solid #bee3f8; }
+        .level-3 { background: #f0fff4; color: #276749; border: 1px solid #9ae6b4; }
+
+        /* ── Signals ── */
+        .signals-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+        .signal-card {
+            border-radius: 10px; padding: 20px; text-align: center;
+            border: 1px solid #e2e8f0;
+        }
+        .signal-card.flowing { background: #f0fff4; border-color: #9ae6b4; }
+        .signal-card.partial { background: #fffaf0; border-color: #fbd38d; }
+        .signal-card.not-flowing { background: #fff5f5; border-color: #feb2b2; }
+        .signal-icon { font-size: 2rem; margin-bottom: 8px; }
+        .signal-name { font-weight: 700; font-size: 15px; margin-bottom: 4px; }
+        .signal-status { font-size: 12px; font-weight: 600; }
+        .signal-card.flowing .signal-status { color: #276749; }
+        .signal-card.partial .signal-status { color: #c05621; }
+        .signal-card.not-flowing .signal-status { color: #c53030; }
+        .signal-detail { font-size: 12px; color: #718096; margin-top: 6px; }
+
+        /* ── Dimension sections ── */
+        .dimension-section { margin-bottom: 20px; }
+        details { border-radius: 10px; border: 1px solid #e2e8f0; overflow: hidden; }
+        summary {
+            display: flex; align-items: center; gap: 12px;
+            padding: 16px 20px; cursor: pointer; background: white;
+            list-style: none; user-select: none;
+            transition: background 0.15s;
+        }
+        summary:hover { background: #f7fafc; }
+        summary::-webkit-details-marker { display: none; }
+        .summary-arrow {
+            margin-left: auto; color: #718096; transition: transform 0.2s;
+        }
+        details[open] .summary-arrow { transform: rotate(90deg); }
+        .dim-title { font-weight: 700; font-size: 15px; flex: 1; }
+        .dim-summary { font-size: 13px; color: #718096; }
+
+        .dim-content {
+            padding: 24px 24px 20px; background: #fafafa;
+            border-top: 1px solid #e2e8f0;
+        }
+        .dim-content h4 {
+            font-size: 13px; font-weight: 700; text-transform: uppercase;
+            letter-spacing: 0.05em; color: #4a5568; margin: 16px 0 8px;
+        }
+        .dim-content h4:first-child { margin-top: 0; }
+        .dim-content p { font-size: 14px; color: #4a5568; margin-bottom: 8px; }
+        .dim-content ul { padding-left: 20px; }
+        .dim-content li { font-size: 14px; color: #4a5568; margin-bottom: 4px; }
+        code {
+            background: #edf2f7; padding: 1px 5px; border-radius: 4px;
+            font-family: 'SFMono-Regular', Consolas, monospace; font-size: 12px;
+        }
+
+        .checklist { list-style: none; padding: 0; }
+        .checklist li { display: flex; gap: 8px; font-size: 13px; padding: 3px 0; }
+        .check-pass { color: #276749; font-weight: 700; }
+        .check-fail { color: #c53030; font-weight: 700; }
+
+        .opportunity-box {
+            background: #fffaf0; border-left: 3px solid #f6ad55;
+            padding: 12px 16px; border-radius: 0 8px 8px 0;
+            margin: 12px 0; font-size: 13px; color: #744210;
+        }
+
+        /* ── Key takeaways ── */
+        .takeaways-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        .takeaway-box { border-radius: 10px; padding: 20px; }
+        .takeaway-box.strengths { background: #f0fff4; border: 1px solid #9ae6b4; }
+        .takeaway-box.improvements { background: #fffaf0; border: 1px solid #fbd38d; }
+        .takeaway-box.observations { background: #ebf8ff; border: 1px solid #bee3f8; }
+        .takeaway-box h3 { font-size: 14px; font-weight: 700; margin-bottom: 12px; }
+        .takeaway-box.strengths h3 { color: #276749; }
+        .takeaway-box.improvements h3 { color: #c05621; }
+        .takeaway-box.observations h3 { color: #2b6cb0; }
+        .takeaway-box ul { padding-left: 18px; }
+        .takeaway-box li { font-size: 13px; margin-bottom: 6px; color: #4a5568; }
+
+        /* ── Footer ── */
+        .site-footer {
+            background: #1a202c; color: #a0aec0;
+            padding: 32px; text-align: center; font-size: 13px; margin-top: 40px;
+        }
+        .site-footer a { color: #63b3ed; }
+
+        @media (max-width: 640px) {
+            .signals-grid { grid-template-columns: 1fr; }
+            .takeaways-grid { grid-template-columns: 1fr; }
+            h1 { font-size: 1.6rem; }
+        }
+    </style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════════ HEADER -->
+<header class="site-header">
+    <div class="header-inner">
+        <div class="project-badge">
+            <span class="dot"></span>
+            CNCF Incubating Project
+        </div>
+        <h1>Contour</h1>
+        <p style="font-size:1.1rem; opacity:0.9; margin-top:6px;">
+            OpenTelemetry Support Maturity Report
+        </p>
+        <div class="header-meta">
+            <span>📦 Version: <strong>v1.33.4</strong></span>
+            <span>📅 Evaluated: <strong>2026-05-08</strong></span>
+            <span>🔍 Model: <strong>OTel Support Maturity (draft)</strong></span>
+            <span>🔗 <a href="https://github.com/projectcontour/contour" style="color:#90cdf4;">github.com/projectcontour/contour</a></span>
+        </div>
+    </div>
+</header>
+
+<div class="container">
+
+    <!-- ═══════════════════════════════════════════════════ RADAR CHART -->
+    <div class="card">
+        <div class="section-title">Maturity Overview</div>
+        <div class="chart-wrap">
+            <canvas id="radarChart"></canvas>
+        </div>
+        <div class="score-legend">
+            <div class="score-legend-item"><div class="score-legend-dot" style="background:#fed7d7"></div> 0 — Instrumented</div>
+            <div class="score-legend-item"><div class="score-legend-dot" style="background:#fbd38d"></div> 1 — OTel-Aligned</div>
+            <div class="score-legend-item"><div class="score-legend-dot" style="background:#90cdf4"></div> 2 — OTel-Native</div>
+            <div class="score-legend-item"><div class="score-legend-dot" style="background:#9ae6b4"></div> 3 — OTel-Optimized</div>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════ SUMMARY TABLE -->
+    <div class="card">
+        <div class="section-title">Dimension Scores</div>
+        <table class="summary-table">
+            <thead>
+            <tr>
+                <th>Dimension</th>
+                <th>Level</th>
+                <th>Summary</th>
+            </tr>
+            </thead>
+            <tbody>
+            <tr>
+                <td><strong>Integration Surface</strong></td>
+                <td><span class="level-badge level-1">1 — OTel-Aligned</span></td>
+                <td>OTLP traces via Envoy's native OTel exporter; metrics only via Prometheus scrape; no OTLP metrics or logs</td>
+            </tr>
+            <tr>
+                <td><strong>Semantic Conventions</strong></td>
+                <td><span class="level-badge level-0">0 — Instrumented</span></td>
+                <td>Deprecated OpenTracing-style HTTP attributes throughout; Envoy-specific non-standard keys; no current OTel semconv</td>
+            </tr>
+            <tr>
+                <td><strong>Resource Attributes &amp; Configuration</strong></td>
+                <td><span class="level-badge level-1">1 — OTel-Aligned</span></td>
+                <td><code>service.name</code> set via project config (not <code>OTEL_SERVICE_NAME</code>); no <code>service.version</code>; OTEL_* env vars not respected</td>
+            </tr>
+            <tr>
+                <td><strong>Trace Modeling &amp; Context Propagation</strong></td>
+                <td><span class="level-badge level-2">2 — OTel-Native</span></td>
+                <td>W3C Trace Context propagated correctly; coherent ingress→egress parent-child structure; E2E traces verified</td>
+            </tr>
+            <tr>
+                <td><strong>Multi-Signal Observability</strong></td>
+                <td><span class="level-badge level-1">1 — OTel-Aligned</span></td>
+                <td>Traces (OTLP) and metrics (Prometheus scrape) present; logs absent; no cross-signal correlation context</td>
+            </tr>
+            <tr>
+                <td><strong>Audience &amp; Signal Quality</strong></td>
+                <td><span class="level-badge level-1">1 — OTel-Aligned</span></td>
+                <td>Span names are Envoy-internal (<code>ingress</code>, <code>router … egress</code>); Envoy-specific attributes require domain knowledge</td>
+            </tr>
+            <tr>
+                <td><strong>Stability &amp; Change Management</strong></td>
+                <td><span class="level-badge level-1">1 — OTel-Aligned</span></td>
+                <td>Tracing documented; no telemetry-specific changelog entries; no schema URL; no stability guarantees stated</td>
+            </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════ SIGNALS -->
+    <div class="card">
+        <div class="section-title">Signal Status</div>
+        <div class="signals-grid">
+
+            <!-- TRACES -->
+            <div class="signal-card flowing">
+                <div class="signal-icon">🔍</div>
+                <div class="signal-name">Traces</div>
+                <div class="signal-status">✅ Flowing</div>
+                <div class="signal-detail">OTLP gRPC via Envoy's native OTel exporter → <code>ExtensionService</code> CRD → OTel Collector. <code>service.name=contour</code></div>
+            </div>
+
+            <!-- METRICS -->
+            <div class="signal-card partial">
+                <div class="signal-icon">📊</div>
+                <div class="signal-name">Metrics</div>
+                <div class="signal-status">⚠️ Prometheus Scrape Only</div>
+                <div class="signal-detail">655 unique metrics (470 <code>envoy_*</code>, 14 <code>contour_*</code>, Go runtime). Prometheus pull only — no OTLP path available.</div>
+            </div>
+
+            <!-- LOGS -->
+            <div class="signal-card not-flowing">
+                <div class="signal-icon">📋</div>
+                <div class="signal-name">Logs</div>
+                <div class="signal-status">❌ Not Flowing</div>
+                <div class="signal-detail">stdout only; no OTLP log export supported or documented.</div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════ DIMENSIONS -->
+    <div class="section-title" style="margin-top:8px;">Dimension Details</div>
+
+    <!-- 1. Integration Surface -->
+    <div class="dimension-section">
+        <details open>
+            <summary>
+                <span class="level-badge level-1">1</span>
+                <span class="dim-title">Integration Surface</span>
+                <span class="dim-summary">OTLP traces working; metrics Prometheus-only; no logs OTel path</span>
+                <span class="summary-arrow">▶</span>
+            </summary>
+            <div class="dim-content">
+                <h4>What we observed</h4>
+                <p>
+                    Contour supports OTLP gRPC trace export via Envoy's native OTel tracer, configured through the <code>ExtensionService</code> CRD and a <code>tracing:</code> block in the Contour ConfigMap. Traces were confirmed flowing — 4 JSONL batches observed in the collector. However, tracing is off by default and requires explicit, project-specific CRD configuration. Metrics are exposed exclusively via Prometheus scrape endpoints: Contour control plane at port <code>8000</code> and Envoy data plane at <code>:8002/stats/prometheus</code>. No OTLP metrics path exists. Logs go to stdout only with no structured OTLP export path. Standard <code>OTEL_*</code> environment variables (e.g., <code>OTEL_EXPORTER_OTLP_ENDPOINT</code>) are not respected.
+                </p>
+
+                <h4>What's working well</h4>
+                <ul>
+                    <li>OTLP gRPC trace export is a first-class, documented feature — OpenTelemetry is explicitly positioned as the supported tracing integration path.</li>
+                    <li>The <a href="https://projectcontour.io/docs/1.33/config/tracing/">Tracing Support</a> documentation page provides a complete guide for enabling OTel tracing.</li>
+                    <li>A rich Prometheus metrics set (655 unique metric names) provides deep visibility into proxy and control-plane behavior.</li>
+                </ul>
+
+                <h4>Opportunities</h4>
+                <div class="opportunity-box">
+                    <strong>Add OTLP metrics export</strong> — Offering an opt-in OTLP metrics export path (alongside the existing Prometheus endpoint) would enable consistent signal collection, allow <code>service.name</code> to be unified across traces and metrics, and reduce the need for a separate Prometheus scrape pipeline in OTel-native environments.
+                </div>
+                <div class="opportunity-box">
+                    <strong>Support standard <code>OTEL_*</code> environment variables</strong> — Respecting <code>OTEL_EXPORTER_OTLP_ENDPOINT</code>, <code>OTEL_SERVICE_NAME</code>, and <code>OTEL_RESOURCE_ATTRIBUTES</code> would let operators configure telemetry using familiar, standard mechanisms rather than Contour-specific ConfigMap fields.
+                </div>
+                <div class="opportunity-box">
+                    <strong>Document the <code>ExtensionService</code> cross-namespace workaround</strong> — When the OTel Collector runs in a different namespace (common in production), operators must create a manual <code>ClusterIP</code> Service + <code>Endpoints</code> object in the <code>projectcontour</code> namespace. This workaround is not documented in the tracing guide and is a frequent operator pain point.
+                </div>
+
+                <h4>Checklist</h4>
+                <ul class="checklist">
+                    <li><span class="check-pass">✅</span> OTLP is supported for traces</li>
+                    <li><span class="check-pass">✅</span> OpenTelemetry is documented as the tracing integration path</li>
+                    <li><span class="check-fail">❌</span> OTLP is not the default — tracing is off by default; must be explicitly enabled via CRD</li>
+                    <li><span class="check-fail">❌</span> Metrics are Prometheus-only; no OTLP metrics path exists</li>
+                    <li><span class="check-fail">❌</span> Logs have no OTLP path — stdout only</li>
+                    <li><span class="check-fail">❌</span> <code>OTEL_EXPORTER_OTLP_ENDPOINT</code> and other standard OTel env vars are not respected</li>
+                    <li><span class="check-fail">❌</span> Integration surface is signal-inconsistent (OTLP for traces, scrape for metrics, nothing for logs)</li>
+                </ul>
+            </div>
+        </details>
+    </div>
+
+    <!-- 2. Semantic Conventions -->
+    <div class="dimension-section">
+        <details>
+            <summary>
+                <span class="level-badge level-0">0</span>
+                <span class="dim-title">Semantic Conventions</span>
+                <span class="dim-summary">All HTTP span attributes use deprecated OpenTracing-era names; no current OTel semconv in use</span>
+                <span class="summary-arrow">▶</span>
+            </summary>
+            <div class="dim-content">
+                <h4>What we observed</h4>
+                <p>
+                    Every HTTP span attribute emitted by Envoy's OTel tracer uses deprecated pre-1.0 OpenTracing-era attribute names. Not a single current stable OTel semantic convention is used. Key examples: <code>http.method</code> (current: <code>http.request.method</code>), <code>http.status_code</code> (current: <code>http.response.status_code</code>), <code>http.url</code> (current: <code>url.full</code>), <code>http.protocol</code> (current: <code>network.protocol.name</code> + <code>network.protocol.version</code>). Additionally, several attributes are entirely Envoy-proprietary with no OTel mapping: <code>upstream_cluster</code>, <code>upstream_cluster.name</code>, <code>upstream_address</code>, <code>response_flags</code>, <code>node_id</code>, <code>guid:x-request-id</code>, <code>zone</code>. Metric names use Prometheus-style naming (<code>contour_*</code>, <code>envoy_*</code>) rather than OTel conventions. No <code>schemaUrl</code> is set on any trace or metric data from the project.
+                </p>
+                <p>
+                    <strong>Important architectural context:</strong> Contour's role in tracing is as a configuration layer — it programs Envoy's OTel tracer via xDS. The span attributes and resource attributes are entirely determined by Envoy's built-in OTel tracer implementation, not by Contour code. Improving semconv compliance requires upstream Envoy changes.
+                </p>
+
+                <h4>What's working well</h4>
+                <ul>
+                    <li>The instrumentation scope does identify itself as <code>envoy</code>, providing clear attribution of the telemetry source.</li>
+                    <li>The span data is rich and consistently emitted — the attribute set is comprehensive, even if the naming conventions need updating.</li>
+                </ul>
+
+                <h4>Opportunities</h4>
+                <div class="opportunity-box">
+                    <strong>Advocate for / contribute current OTel HTTP semconv in Envoy's OTel tracer</strong> — Migrating from <code>http.method</code> → <code>http.request.method</code>, <code>http.status_code</code> → <code>http.response.status_code</code>, <code>http.url</code> → <code>url.full</code> would immediately improve interoperability with OTel-native backends (Jaeger, Grafana Tempo, etc.). This is an upstream Envoy change, but Contour maintainers can advocate, file issues, or contribute.
+                </div>
+                <div class="opportunity-box">
+                    <strong>Add a <code>schemaUrl</code> to trace data</strong> — Setting a schema URL at the resource or scope level would allow downstream tooling to understand which version of the OTel semantic conventions the telemetry intends to follow, even if migration is in progress.
+                </div>
+                <div class="opportunity-box">
+                    <strong>Document Envoy-proprietary attributes</strong> — Adding a reference page explaining <code>response_flags</code>, <code>upstream_cluster</code>, <code>node_id</code>, and <code>guid:x-request-id</code> values would help operators interpret telemetry without needing deep Envoy expertise.
+                </div>
+
+                <h4>Checklist</h4>
+                <ul class="checklist">
+                    <li><span class="check-fail">❌</span> No current OTel HTTP semantic conventions used (<code>http.request.method</code>, <code>url.full</code>, <code>http.response.status_code</code> all absent)</li>
+                    <li><span class="check-fail">❌</span> All HTTP attributes use deprecated OpenTracing-era names (<code>http.method</code>, <code>http.status_code</code>, <code>http.url</code>)</li>
+                    <li><span class="check-fail">❌</span> Multiple Envoy-proprietary attributes with no OTel mapping (<code>upstream_cluster</code>, <code>response_flags</code>, <code>node_id</code>)</li>
+                    <li><span class="check-fail">❌</span> No OTel metric naming conventions — Prometheus-style names only</li>
+                    <li><span class="check-fail">❌</span> No <code>schemaUrl</code> on trace or metric data from the project</li>
+                    <li><span class="check-fail">❌</span> Operators need Envoy-specific knowledge to interpret most span attributes</li>
+                </ul>
+            </div>
+        </details>
+    </div>
+
+    <!-- 3. Resource Attributes & Configuration -->
+    <div class="dimension-section">
+        <details>
+            <summary>
+                <span class="level-badge level-1">1</span>
+                <span class="dim-title">Resource Attributes &amp; Configuration</span>
+                <span class="dim-summary"><code>service.name</code> present on traces; no <code>service.version</code>; OTEL_* env vars not respected; inconsistent identity across signals</span>
+                <span class="summary-arrow">▶</span>
+            </summary>
+            <div class="dim-content">
+                <h4>What we observed</h4>
+                <p>
+                    Envoy emits these resource attributes natively on trace data: <code>service.name: contour</code> (configured via <code>serviceName</code> in the Contour ConfigMap <code>tracing:</code> block), <code>telemetry.sdk.name: envoy</code>, <code>telemetry.sdk.language: cpp</code>, and <code>telemetry.sdk.version: 3542e3464a2662423065a6ec854905b25955a09e/1.35.10/Clean/RELEASE/BoringSSL</code> (an Envoy build hash, not a semantic version). <code>service.version</code>, <code>service.instance.id</code>, and <code>service.namespace</code> are all absent. Identity is inconsistent across signals: traces use <code>service.name=contour</code>, while metrics use collector-derived names (<code>service.name=contour-control-plane</code> and <code>service.name=envoy-data-plane</code> from scrape job names). Standard <code>OTEL_*</code> environment variables are not supported.
+                </p>
+
+                <h4>What's working well</h4>
+                <ul>
+                    <li><code>service.name</code> is set as a resource attribute on traces, providing a baseline identity for trace data.</li>
+                    <li><code>telemetry.sdk.*</code> attributes (<code>telemetry.sdk.name</code>, <code>telemetry.sdk.language</code>, <code>telemetry.sdk.version</code>) are present, identifying the instrumentation source.</li>
+                </ul>
+
+                <h4>Opportunities</h4>
+                <div class="opportunity-box">
+                    <strong>Add <code>service.version</code> to trace resource attributes</strong> — The Envoy version (<code>1.35.10</code>) is embedded in the <code>telemetry.sdk.version</code> build hash but requires parsing. Emitting it as a clean <code>service.version</code> resource attribute would enable version-based filtering and grouping in observability backends.
+                </div>
+                <div class="opportunity-box">
+                    <strong>Respect <code>OTEL_SERVICE_NAME</code> and <code>OTEL_RESOURCE_ATTRIBUTES</code></strong> — Supporting standard OTel env vars for service identity would allow operators to configure telemetry consistently without project-specific ConfigMap changes, and would align with OTel SDK conventions.
+                </div>
+                <div class="opportunity-box">
+                    <strong>Unify <code>service.name</code> across traces and metrics</strong> — Traces use <code>service.name=contour</code> while metrics use collector-derived names. Documenting a recommended naming scheme (or adding native OTLP metrics so <code>service.name</code> can be set consistently) would enable cross-signal correlation in backends like Grafana.
+                </div>
+
+                <h4>Checklist</h4>
+                <ul class="checklist">
+                    <li><span class="check-pass">✅</span> <code>service.name</code> is set as a resource attribute on traces</li>
+                    <li><span class="check-pass">✅</span> <code>telemetry.sdk.*</code> attributes are present</li>
+                    <li><span class="check-fail">❌</span> <code>service.version</code> is absent from resource attributes</li>
+                    <li><span class="check-fail">❌</span> <code>service.instance.id</code> is absent</li>
+                    <li><span class="check-fail">❌</span> <code>OTEL_SERVICE_NAME</code> is not respected</li>
+                    <li><span class="check-fail">❌</span> <code>OTEL_RESOURCE_ATTRIBUTES</code> is not respected</li>
+                    <li><span class="check-fail">❌</span> Identity is inconsistent across signals (traces vs. metrics use different <code>service.name</code> values)</li>
+                    <li><span class="check-fail">❌</span> Metrics resource identity is entirely collector-derived, not project-native</li>
+                </ul>
+            </div>
+        </details>
+    </div>
+
+    <!-- 4. Trace Modeling & Context Propagation -->
+    <div class="dimension-section">
+        <details>
+            <summary>
+                <span class="level-badge level-2">2</span>
+                <span class="dim-title">Trace Modeling &amp; Context Propagation</span>
+                <span class="dim-summary">W3C Trace Context propagated correctly in both directions; coherent E2E traces verified across Envoy and backend</span>
+                <span class="summary-arrow">▶</span>
+            </summary>
+            <div class="dim-content">
+                <h4>What we observed</h4>
+                <p>
+                    This is Contour's strongest dimension. Each HTTP request through Envoy produces exactly two spans with a correct parent-child relationship: an <code>ingress</code> span (kind=<code>SERVER</code>) representing the inbound request, and a <code>router … egress</code> span (kind=<code>CLIENT</code>) representing the upstream forwarding. W3C Trace Context propagation was verified in both directions:
+                </p>
+                <ul>
+                    <li><strong>Without inbound <code>traceparent</code>:</strong> Envoy creates a new root <code>ingress</code> span. The backend's <code>GET /</code> span has <code>parentSpanId</code> matching the Envoy egress span — confirming full E2E trace coherence across service boundaries.</li>
+                    <li><strong>With inbound <code>traceparent</code>:</strong> Envoy's <code>ingress</code> span correctly sets <code>parentSpanId</code> to the caller's span ID, continuing the external trace. Multiple <code>ingress</code> spans all showed the correct <code>traceId</code> and <code>parentSpanId</code>.</li>
+                </ul>
+                <p>
+                    Example verified trace tree: <code>ingress</code> (Envoy, SERVER, root) → <code>router demo_otel-eval-backend_3000 egress</code> (Envoy, CLIENT) → <code>GET /</code> (backend, SERVER) → middleware spans.
+                </p>
+
+                <h4>What's working well</h4>
+                <ul>
+                    <li>W3C Trace Context (<code>traceparent</code> header) is supported and propagated correctly — both inbound (continuing external traces) and outbound (injecting into upstream requests).</li>
+                    <li>Entry-point spans are consistently <code>SERVER</code> (kind=2) and upstream forwarding spans are consistently <code>CLIENT</code> (kind=3) — semantically correct per OTel conventions.</li>
+                    <li>E2E traces span Envoy and upstream services coherently in a single trace tree — the core value proposition for an ingress controller.</li>
+                    <li>The two-span model (<code>ingress</code> + <code>egress</code>) is intentional, lean, and documented.</li>
+                </ul>
+
+                <h4>Opportunities</h4>
+                <div class="opportunity-box">
+                    <strong>Improve span names to reflect logical operations</strong> — Span names like <code>router demo_otel-eval-backend_3000 egress</code> encode Envoy's internal cluster naming scheme. Adopting OTel HTTP semconv span naming (e.g., <code>GET /path</code> or <code>HTTP GET</code>) would make traces immediately readable to operators unfamiliar with Envoy internals.
+                </div>
+                <div class="opportunity-box">
+                    <strong>Document trace modeling as a design contract</strong> — Explicitly documenting the two-span model (what each span represents, what attributes to expect) as a stable contract would give operators confidence to build dashboards and alerts on top of trace data.
+                </div>
+
+                <h4>Checklist</h4>
+                <ul class="checklist">
+                    <li><span class="check-pass">✅</span> W3C Trace Context (<code>traceparent</code>) is supported and propagated correctly in both directions</li>
+                    <li><span class="check-pass">✅</span> Entry-point spans are consistently <code>SERVER</code> (kind=2)</li>
+                    <li><span class="check-pass">✅</span> Upstream forwarding spans are consistently <code>CLIENT</code> (kind=3)</li>
+                    <li><span class="check-pass">✅</span> Parent-child relationships are correct and consistent</li>
+                    <li><span class="check-pass">✅</span> E2E traces span Envoy and upstream services coherently</li>
+                    <li><span class="check-pass">✅</span> Context propagation works across service boundaries</li>
+                    <li><span class="check-pass">✅</span> The two-span model (ingress + egress) is intentional and documented</li>
+                    <li><span class="check-fail">❌</span> Span names reflect Envoy internals rather than logical operations (<code>router demo_otel-eval-backend_3000 egress</code>)</li>
+                    <li><span class="check-fail">❌</span> No <code>schemaUrl</code> on trace data; trace modeling not documented as a design contract</li>
+                </ul>
+            </div>
+        </details>
+    </div>
+
+    <!-- 5. Multi-Signal Observability -->
+    <div class="dimension-section">
+        <details>
+            <summary>
+                <span class="level-badge level-1">1</span>
+                <span class="dim-title">Multi-Signal Observability</span>
+                <span class="dim-summary">Traces (OTLP) and metrics (Prometheus) present but isolated; logs absent; no cross-signal correlation</span>
+                <span class="summary-arrow">▶</span>
+            </summary>
+            <div class="dim-content">
+                <h4>What we observed</h4>
+                <p>
+                    Two of three signals are present: traces flow via OTLP gRPC and metrics are available via Prometheus scrape (655 unique metric names). Logs are absent as an OTLP signal — stdout only. Critically, there is no cross-signal correlation between traces and metrics: traces use <code>service.name=contour</code> while metrics use collector-derived names (<code>service.name=contour-control-plane</code>, <code>service.name=envoy-data-plane</code>). No shared attribute keys exist between trace spans and metric data points. A user cannot pivot from a latency metric to a specific trace, or from a trace to related logs. The mixed push/pull collection model (OTLP push for traces, Prometheus pull for metrics) compounds the correlation challenge.
+                </p>
+
+                <h4>What's working well</h4>
+                <ul>
+                    <li>Traces are present and flowing via OTLP — a first-class, push-based signal.</li>
+                    <li>Metrics are rich and comprehensive: 470 <code>envoy_*</code> metrics, 14 <code>contour_*</code> control-plane metrics, plus Go runtime metrics — covering circuit breakers, upstream health, xDS state, and more.</li>
+                </ul>
+
+                <h4>Opportunities</h4>
+                <div class="opportunity-box">
+                    <strong>Add OTLP log export</strong> — Even basic structured log forwarding via OTLP would complete the three-signal picture and unlock trace-to-log correlation. Adding <code>trace_id</code> and <code>span_id</code> fields to structured log output would be a meaningful first step.
+                </div>
+                <div class="opportunity-box">
+                    <strong>Unify service identity to enable cross-signal correlation</strong> — Aligning <code>service.name</code> across traces and metrics (or documenting the mapping between <code>contour</code>, <code>contour-control-plane</code>, and <code>envoy-data-plane</code>) would allow operators to correlate high-latency traces with relevant metric spikes in Grafana or similar backends.
+                </div>
+                <div class="opportunity-box">
+                    <strong>Add OTLP metrics export</strong> — Moving metrics to OTLP push would unify the collection model, allow native <code>service.name</code> to be set consistently, and eliminate the need for a separate Prometheus scrape pipeline.
+                </div>
+
+                <h4>Checklist</h4>
+                <ul class="checklist">
+                    <li><span class="check-pass">✅</span> Traces are present and flowing via OTLP</li>
+                    <li><span class="check-pass">✅</span> Metrics are present (rich set: 655 unique metric names)</li>
+                    <li><span class="check-fail">❌</span> Logs are absent as an OTLP signal</li>
+                    <li><span class="check-fail">❌</span> No trace context in logs (logs not available as OTLP)</li>
+                    <li><span class="check-fail">❌</span> Metrics do not share attribute keys with traces</li>
+                    <li><span class="check-fail">❌</span> <code>service.name</code> differs between traces and metrics</li>
+                    <li><span class="check-fail">❌</span> Users cannot pivot between signals without manual correlation effort</li>
+                    <li><span class="check-fail">❌</span> Signals are designed and collected independently (push vs. pull)</li>
+                </ul>
+            </div>
+        </details>
+    </div>
+
+    <!-- 6. Audience & Signal Quality -->
+    <div class="dimension-section">
+        <details>
+            <summary>
+                <span class="level-badge level-1">1</span>
+                <span class="dim-title">Audience &amp; Signal Quality</span>
+                <span class="dim-summary">Lean trace volume (2 spans/request); span names and attributes require Envoy domain knowledge; 655 metrics with no guidance on relevance</span>
+                <span class="summary-arrow">▶</span>
+            </summary>
+            <div class="dim-content">
+                <h4>What we observed</h4>
+                <p>
+                    Trace volume is lean — exactly two spans per request (<code>ingress</code> + <code>router … egress</code>) — which is appropriate for an ingress controller. Sampling is configurable via <code>overallSampling</code>. However, span names encode Envoy's internal cluster naming scheme: <code>router demo_otel-eval-backend_3000 egress</code> encodes namespace (<code>demo</code>), service name (<code>otel-eval-backend</code>), and port (<code>3000</code>). An operator unfamiliar with Envoy's cluster naming convention would need to decode this. Multiple attributes require Envoy-specific knowledge: <code>response_flags</code> uses Envoy's internal flag notation (e.g., <code>-</code> for no flags), <code>upstream_cluster</code> encodes an internal cluster ID (<code>demo/otel-eval-backend/3000/da39a3ee5e</code>), and <code>node_id</code> / <code>guid:x-request-id</code> / <code>zone</code> are Envoy internals. Metrics volume is very high (655 unique names) with no guidance on which are operationally relevant.
+                </p>
+
+                <h4>What's working well</h4>
+                <ul>
+                    <li>Trace volume is lean (2 spans per request) — no excessive internal spans that would add noise.</li>
+                    <li>Sampling is configurable via the <code>overallSampling</code> field, allowing operators to tune trace volume for production use.</li>
+                    <li>The <code>customTags</code> and <code>includePodDetail</code> configuration options allow operators to add context to spans beyond the defaults.</li>
+                </ul>
+
+                <h4>Opportunities</h4>
+                <div class="opportunity-box">
+                    <strong>Adopt OTel HTTP semconv span naming</strong> — Replacing <code>ingress</code> with a name like <code>HTTP GET</code> or <code>{method} {route}</code>, and <code>router demo_otel-eval-backend_3000 egress</code> with a logical upstream service name, would make traces immediately readable without Envoy domain knowledge.
+                </div>
+                <div class="opportunity-box">
+                    <strong>Publish a "top metrics" guide</strong> — With 655 unique metric names, operators need guidance on which metrics matter for common scenarios (latency SLOs, error rates, upstream health). A curated list of 10–20 key metrics with descriptions would significantly improve operational usability.
+                </div>
+                <div class="opportunity-box">
+                    <strong>Document Envoy-specific attribute semantics</strong> — Adding a reference for <code>response_flags</code> values, <code>upstream_cluster</code> naming format, and other Envoy-internal attributes would reduce the domain knowledge barrier for operators new to Envoy.
+                </div>
+
+                <h4>Checklist</h4>
+                <ul class="checklist">
+                    <li><span class="check-pass">✅</span> Trace volume is lean (2 spans per request)</li>
+                    <li><span class="check-pass">✅</span> Sampling is configurable via <code>overallSampling</code></li>
+                    <li><span class="check-fail">❌</span> Span names reflect Envoy internals, not logical operations (<code>ingress</code>, <code>router … egress</code>)</li>
+                    <li><span class="check-fail">❌</span> Multiple span attributes require Envoy-specific knowledge (<code>response_flags</code>, <code>upstream_cluster</code>, <code>node_id</code>)</li>
+                    <li><span class="check-fail">❌</span> Metric volume is very high (655 metrics) with no guidance on which are operationally relevant</li>
+                    <li><span class="check-fail">❌</span> No documentation on which signals to use for common investigative workflows</li>
+                </ul>
+            </div>
+        </details>
+    </div>
+
+    <!-- 7. Stability & Change Management -->
+    <div class="dimension-section">
+        <details>
+            <summary>
+                <span class="level-badge level-1">1</span>
+                <span class="dim-title">Stability &amp; Change Management</span>
+                <span class="dim-summary">Tracing and metrics endpoints documented; no schema URL, no telemetry changelog, no stability guarantees</span>
+                <span class="summary-arrow">▶</span>
+            </summary>
+            <div class="dim-content">
+                <h4>What we observed</h4>
+                <p>
+                    The <a href="https://projectcontour.io/docs/1.33/config/tracing/">Tracing Support</a> page documents tracing configuration options (<code>serviceName</code>, <code>overallSampling</code>, <code>includePodDetail</code>, <code>customTags</code>, <code>maxPathTagLength</code>, <code>extensionService</code>). The <a href="https://projectcontour.io/docs/1.33/guides/prometheus/">Prometheus guide</a> documents the metrics endpoints. However, no telemetry is documented as a stable contract with defined stability guarantees. Changelogs for v1.33.0 and v1.32.0 contain no telemetry-specific entries — any telemetry changes would be buried in general commit messages. No <code>schemaUrl</code> is set on trace data (confirmed via <code>jq</code> query returning empty) or on metric data from the Prometheus receiver. No distinction is made between stable and experimental telemetry, and no deprecation policy exists for telemetry.
+                </p>
+
+                <h4>What's working well</h4>
+                <ul>
+                    <li>Tracing configuration is documented with all available options explained — operators can understand what they're configuring.</li>
+                    <li>Metrics endpoints are documented in the Prometheus guide, including the non-standard <code>/stats/prometheus</code> path for Envoy.</li>
+                </ul>
+
+                <h4>Opportunities</h4>
+                <div class="opportunity-box">
+                    <strong>Add a <code>schemaUrl</code> to emitted trace and metric data</strong> — Setting a schema URL (e.g., <code>https://opentelemetry.io/schemas/1.26.0</code>) would declare the intended semconv version, enabling downstream tooling to process and validate the telemetry correctly.
+                </div>
+                <div class="opportunity-box">
+                    <strong>Add a dedicated "Observability" section to release notes</strong> — Calling out telemetry changes (span attribute additions/removals, metric name changes, new configuration options) in release notes would allow operators to update dashboards and alerts proactively rather than discovering breakage in production.
+                </div>
+                <div class="opportunity-box">
+                    <strong>Introduce telemetry stability tiers</strong> — Distinguishing between stable telemetry (safe to build dashboards on) and experimental telemetry (subject to change) would give operators confidence to build reliable observability tooling on top of Contour's telemetry.
+                </div>
+
+                <h4>Checklist</h4>
+                <ul class="checklist">
+                    <li><span class="check-pass">✅</span> Tracing configuration is documented</li>
+                    <li><span class="check-pass">✅</span> Metrics endpoints are documented</li>
+                    <li><span class="check-fail">❌</span> No <code>schemaUrl</code> on trace or metric data</li>
+                    <li><span class="check-fail">❌</span> No telemetry-specific changelog sections in release notes</li>
+                    <li><span class="check-fail">❌</span> No distinction between stable and experimental telemetry</li>
+                    <li><span class="check-fail">❌</span> No explicit stability guarantees for telemetry</li>
+                    <li><span class="check-fail">❌</span> Telemetry is not treated as part of the public contract</li>
+                    <li><span class="check-fail">❌</span> No deprecation policy for telemetry</li>
+                </ul>
+            </div>
+        </details>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════ KEY TAKEAWAYS -->
+    <div class="card" style="margin-top:32px;">
+        <div class="section-title">Key Takeaways</div>
+        <div class="takeaways-grid">
+            <div class="takeaway-box strengths">
+                <h3>🟢 Strengths</h3>
+                <ul>
+                    <li><strong>W3C Trace Context propagation is correct and complete</strong> — Envoy correctly reads inbound <code>traceparent</code> headers (continuing external traces) and injects <code>traceparent</code> into upstream requests. E2E traces spanning Envoy and backend services are coherent and verified. This is the most important capability for an ingress controller.</li>
+                    <li><strong>Rich Envoy metrics set</strong> — 470+ <code>envoy_*</code> metrics and 14 <code>contour_*</code> control-plane metrics provide deep visibility into proxy behavior, circuit breakers, upstream health, and xDS control plane state.</li>
+                    <li><strong>Tracing is documented and first-class</strong> — The Tracing Support page provides a complete guide for enabling OTel tracing via the <code>ExtensionService</code> CRD. OpenTelemetry is explicitly positioned as the supported tracing integration.</li>
+                </ul>
+            </div>
+            <div class="takeaway-box improvements">
+                <h3>🟡 Priority Improvements</h3>
+                <ul>
+                    <li><strong>Adopt current OTel HTTP semantic conventions</strong> — All HTTP span attributes use deprecated OpenTracing-era names. Migrating to <code>http.request.method</code>, <code>http.response.status_code</code>, <code>url.full</code> would immediately improve interoperability with OTel-native tooling (requires upstream Envoy changes).</li>
+                    <li><strong>Add <code>service.version</code> and respect <code>OTEL_*</code> env vars</strong> — The trace resource lacks <code>service.version</code>. Supporting standard OTel env vars for service identity would allow consistent configuration without project-specific ConfigMap changes.</li>
+                    <li><strong>Unify service identity across signals</strong> — Traces use <code>service.name=contour</code> while metrics use collector-derived names. Consistent identity would enable cross-signal correlation in Grafana or Jaeger.</li>
+                    <li><strong>Add OTLP metrics export</strong> — Moving metrics to OTLP push would unify the collection model, enable native <code>service.name</code> consistency, and reduce operator setup friction.</li>
+                    <li><strong>Introduce telemetry stability documentation</strong> — Adding a dedicated "Observability" section to release notes and documenting which attributes/metrics are stable would allow operators to build reliable dashboards without fear of silent breakage.</li>
+                </ul>
+            </div>
+        </div>
+        <div class="takeaway-box observations" style="margin-top:16px;">
+            <h3>🔵 Notable Observations</h3>
+            <ul>
+                <li><strong>Architectural constraint: Envoy owns the trace semantics</strong> — Contour's role in tracing is as a configuration layer — it programs Envoy's OTel tracer via xDS. Span attributes, span names, and resource attributes are entirely determined by Envoy's built-in OTel tracer. Improvements to semantic conventions require upstream Envoy changes, which is a significant but not insurmountable constraint.</li>
+                <li><strong><code>ExtensionService</code> cross-namespace limitation is a real operator pain point</strong> — When the OTel Collector runs in a different namespace (common in production), operators must create manual <code>ClusterIP</code> Service + <code>Endpoints</code> objects in the <code>projectcontour</code> namespace. This workaround is not documented in the tracing guide.</li>
+                <li><strong>Envoy metrics path is non-standard (<code>/stats/prometheus</code>)</strong> — The Prometheus receiver's default <code>metrics_path=/metrics</code> silently returns 404 for Envoy. This is a common operator mistake that results in no Envoy metrics being scraped, and it is not prominently highlighted in the Prometheus guide.</li>
+                <li><strong><code>telemetry.sdk.version</code> is a build hash, not a semantic version</strong> — The value <code>3542e3464a2662423065a6ec854905b25955a09e/1.35.10/Clean/RELEASE/BoringSSL</code> is not useful as a version identifier. The actual Envoy version (<code>1.35.10</code>) is embedded but requires parsing to extract.</li>
+            </ul>
+        </div>
+    </div>
+
+</div><!-- /container -->
+
+<footer class="site-footer">
+    <p>
+        Evaluated using the <strong>OpenTelemetry Support Maturity Model for CNCF Projects</strong> (draft) ·
+        Contour <a href="https://github.com/projectcontour/contour">github.com/projectcontour/contour</a> ·
+        Telemetry collected in kind cluster (<code>otel-eval-contour</code>) with OTel Collector file exporter · k8sattributes processor used to distinguish native vs. enriched resource attributes · Traffic generated with and without inbound W3C <code>traceparent</code> headers
+    </p>
+    <p style="margin-top:8px;">Generated by <strong>generate-otel-report v0.0.3</strong></p>
+</footer>
+
+<script>
+    const DIMENSION_SCORES = [
+        /* Integration Surface        */ 1,
+        /* Semantic Conventions       */ 0,
+        /* Resource Attrs & Config    */ 1,
+        /* Trace Modeling & Propagation */ 2,
+        /* Multi-Signal Observability */ 1,
+        /* Audience & Signal Quality  */ 1,
+        /* Stability & Change Mgmt    */ 1,
+    ];
+
+    const PROJECT_LABEL = 'Contour v1.33.4';
+
+    const ctx = document.getElementById('radarChart').getContext('2d');
+    new Chart(ctx, {
+        type: 'radar',
+        data: {
+            labels: [
+                'Integration Surface',
+                'Semantic Conventions',
+                'Resource Attrs\n& Configuration',
+                'Trace Modeling\n& Propagation',
+                'Multi-Signal\nObservability',
+                'Audience &\nSignal Quality',
+                'Stability &\nChange Mgmt'
+            ],
+            datasets: [{
+                label: PROJECT_LABEL,
+                data: DIMENSION_SCORES,
+                backgroundColor: 'rgba(49, 130, 206, 0.15)',
+                borderColor: 'rgba(49, 130, 206, 0.9)',
+                borderWidth: 2.5,
+                pointBackgroundColor: 'rgba(49, 130, 206, 1)',
+                pointBorderColor: '#fff',
+                pointHoverBackgroundColor: '#fff',
+                pointHoverBorderColor: 'rgba(49, 130, 206, 1)',
+                pointRadius: 5,
+                pointHoverRadius: 7,
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            scales: {
+                r: {
+                    min: 0,
+                    max: 3,
+                    ticks: {
+                        stepSize: 1,
+                        callback: (v) => ['Instrumented','Aligned','Native','Optimized'][v] || v,
+                        font: { size: 10 },
+                        color: '#718096',
+                        backdropColor: 'transparent',
+                    },
+                    grid: { color: 'rgba(0,0,0,0.08)' },
+                    angleLines: { color: 'rgba(0,0,0,0.1)' },
+                    pointLabels: {
+                        font: { size: 12, weight: '600' },
+                        color: '#2d3748',
+                    }
+                }
+            },
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    callbacks: {
+                        label: (ctx) => {
+                            const names = ['Instrumented','OTel-Aligned','OTel-Native','OTel-Optimized'];
+                            return ` Level ${ctx.raw} — ${names[ctx.raw]}`;
+                        }
+                    }
+                }
+            }
+        }
+    });
+</script>
+</body>
+</html>
