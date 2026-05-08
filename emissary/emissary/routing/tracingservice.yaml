@@ -1,0 +1,19 @@
+# Note: Emissary's "opentelemetry" driver uses the wrong Envoy tracer name ("envoy.opentelemetry"
+# instead of the correct "envoy.tracers.opentelemetry"), causing silent failure.
+# Using the "zipkin" driver instead, which routes through the OTel Collector's Zipkin receiver
+# on port 9411. This still captures Emissary's Envoy spans via the OTel pipeline.
+apiVersion: getambassador.io/v3alpha1
+kind: TracingService
+metadata:
+  name: otel-tracing
+  namespace: emissary
+spec:
+  driver: zipkin
+  service: otel-collector-opentelemetry-collector.opentelemetry:9411
+  sampling:
+    random: 100
+  config:
+    collector_endpoint: /api/v2/spans
+    collector_endpoint_version: HTTP_JSON
+    trace_id_128bit: true
+    shared_span_context: false
