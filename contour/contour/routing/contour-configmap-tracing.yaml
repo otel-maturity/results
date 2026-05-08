@@ -1,0 +1,23 @@
+## Contour ConfigMap with tracing enabled via ExtensionService
+## This replaces the default ConfigMap to enable OTLP trace export via Envoy
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: contour
+  namespace: projectcontour
+data:
+  contour.yaml: |
+    disablePermitInsecure: false
+    tls:
+      fallback-certificate:
+      envoy-client-certificate:
+    accesslog-format: envoy
+    tracing:
+      # Reference the ExtensionService that points to the OTel Collector
+      extensionService: projectcontour/otel-collector
+      # Service name attached to spans
+      serviceName: contour
+      # Sample 100% of requests
+      overallSampling: 100
+      # Include Envoy pod hostname and namespace in spans
+      includePodDetail: true

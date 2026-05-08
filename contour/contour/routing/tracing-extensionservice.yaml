@@ -1,0 +1,43 @@
+## Service + Endpoints in projectcontour namespace pointing to OTel Collector gRPC
+## ExternalName services are not supported by Contour ExtensionService.
+## We create a headless ClusterIP service with manual Endpoints pointing to the
+## OTel Collector's ClusterIP in the opentelemetry namespace.
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: otel-collector-grpc
+  namespace: projectcontour
+spec:
+  type: ClusterIP
+  clusterIP: None
+  ports:
+    - name: grpc
+      port: 4317
+      protocol: TCP
+---
+apiVersion: v1
+kind: Endpoints
+metadata:
+  name: otel-collector-grpc
+  namespace: projectcontour
+subsets:
+  - addresses:
+      - ip: 10.96.225.200   # ClusterIP of otel-collector-opentelemetry-collector.opentelemetry
+    ports:
+      - name: grpc
+        port: 4317
+        protocol: TCP
+---
+## ExtensionService pointing Contour's tracing at the OTel Collector gRPC endpoint
+## Contour uses this to tell Envoy where to send OTLP spans (h2c = plaintext gRPC)
+apiVersion: projectcontour.io/v1alpha1
+kind: ExtensionService
+metadata:
+  name: otel-collector
+  namespace: projectcontour
+spec:
+  protocol: h2c
+  services:
+    - name: otel-collector-grpc
+      port: 4317
