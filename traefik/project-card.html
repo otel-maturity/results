@@ -1,0 +1,90 @@
+<!--
+==============================================================================
+  PROJECT CARD TEMPLATE
+  Copy this entire block and paste it inside <div class="card-grid"> in
+  index-template.html. Replace every {{ PLACEHOLDER }} with real values.
+
+  SCORE VALUES: 0 · 1 · 2 · 3  (use the matching CSS class: score-0 … score-3)
+  SIGNAL STATUS classes on <span class="signal-dot ...">:
+    flowing  → green  (signal fully supported via OTLP or Prometheus)
+    partial  → orange (signal exists but incomplete / requires setup)
+    none     → grey   (signal not supported)
+==============================================================================
+-->
+
+<!-- Traefik -->
+<a class="project-card" href="traefik-report.html">
+  <div class="card-inner">
+    <div class="card-content">
+
+      <!-- ── Top row: logo · name · version ── -->
+      <div class="card-top">
+        <img class="project-logo"
+             src="https://raw.githubusercontent.com/traefik/traefik/master/docs/content/assets/img/traefik.logo.png"
+             alt="Traefik">
+        <div class="project-name">Traefik</div>
+        <span class="project-version">v3.7.0</span>
+      </div>
+
+      <!-- ── Category tag + one-line description ── -->
+      <div class="card-meta">
+        <span class="category-tag">Ingress Controller</span>
+        <span class="sep">&middot;</span>
+        <span class="card-desc">Cloud-native HTTP reverse proxy and Kubernetes Ingress controller</span>
+      </div>
+
+      <!--
+        ── Score pills ──
+        Order: Integration · Semantics · Resources · Tracing · Multi-Signal · Quality · Stability
+        Set class to score-0, score-1, score-2, or score-3 for each dimension.
+      -->
+      <div class="score-pills">
+        <span class="score-pill score-2" title="Integration">2</span>
+        <span class="score-pill score-2" title="Semantics">2</span>
+        <span class="score-pill score-2" title="Resources">2</span>
+        <span class="score-pill score-2" title="Tracing">2</span>
+        <span class="score-pill score-2" title="Multi-Signal">2</span>
+        <span class="score-pill score-1" title="Quality">1</span>
+        <span class="score-pill score-1" title="Stability">1</span>
+      </div>
+
+      <!--
+        ── Signal pills ──
+        Add or remove <span> rows as needed. Typical set: Traces, Metrics, Logs.
+        dot class: flowing | partial | none
+      -->
+      <div class="card-signals">
+        <span class="signal-pill"><span class="signal-dot flowing"></span> Traces (OTLP gRPC push)</span>
+        <span class="signal-pill"><span class="signal-dot flowing"></span> Metrics (OTLP gRPC + Prometheus)</span>
+        <span class="signal-pill"><span class="signal-dot partial"></span> Logs (OTLP gRPC (experimental))</span>
+      </div>
+
+      <div class="view-report">View report <span class="arrow">&rarr;</span></div>
+    </div>
+
+    <!-- ── Radar chart ── -->
+    <div class="card-chart">
+      <div class="mini-chart">
+        <canvas id="chart-traefik"></canvas>
+      </div>
+    </div>
+  </div>
+</a>
+
+<!--
+  Register chart scores for this card.
+  Place this <script> block right after the <a> tag above (or collect all
+  registerChart() calls in a single <script> at the bottom of the file).
+  Score order: Integration, Semantics, Resources, Tracing, Multi-Signal, Quality, Stability
+-->
+<script>
+registerChart('chart-traefik', [
+  2,   // Integration
+  2,   // Semantics
+  2,   // Resources
+  2,   // Tracing
+  2,   // Multi-Signal
+  1,   // Quality
+  1    // Stability
+]);
+</script>
