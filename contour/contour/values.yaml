@@ -1,0 +1,44 @@
+# Contour 1.32.1 (bitnami/contour 21.1.4) — otel-eval values
+# Envoy service changed to NodePort for kind clusters (no LoadBalancer support)
+# Metrics ports exposed for Prometheus scraping by OTel Collector
+# Using official upstream images (Bitnami images not available on Docker Hub)
+
+contour:
+  enabled: true
+  resourcesPreset: "nano"
+  image:
+    registry: ghcr.io
+    repository: projectcontour/contour
+    tag: v1.32.1
+    pullPolicy: IfNotPresent
+
+envoy:
+  enabled: true
+  resourcesPreset: "nano"
+  image:
+    registry: docker.io
+    repository: envoyproxy/envoy
+    tag: v1.34.1
+    pullPolicy: IfNotPresent
+
+  service:
+    type: NodePort
+    # Expose metrics port so the OTel Collector Prometheus receiver can scrape it
+    exposeMetrics: true
+
+  # Allow Envoy to be scheduled on control-plane nodes in kind
+  tolerations:
+    - key: node-role.kubernetes.io/control-plane
+      operator: Exists
+      effect: NoSchedule
+
+metrics:
+  serviceMonitor:
+    enabled: false
+
+defaultBackend:
+  enabled: false
+
+global:
+  security:
+    allowInsecureImages: true

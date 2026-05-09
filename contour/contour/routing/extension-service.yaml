@@ -1,0 +1,13 @@
+# ExtensionService pointing Contour's tracing at the OTel Collector gRPC endpoint.
+# Contour uses this to configure Envoy's OTLP trace exporter.
+apiVersion: projectcontour.io/v1alpha1
+kind: ExtensionService
+metadata:
+  name: otel-collector
+  namespace: opentelemetry
+spec:
+  # h2c = HTTP/2 cleartext (no TLS) — required for Envoy OTLP gRPC
+  protocol: h2c
+  services:
+    - name: otel-collector-opentelemetry-collector
+      port: 4317
