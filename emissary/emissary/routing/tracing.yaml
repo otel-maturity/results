@@ -1,0 +1,15 @@
+---
+apiVersion: getambassador.io/v3alpha1
+kind: TracingService
+metadata:
+  name: emissary-tracing
+  namespace: emissary
+spec:
+  driver: zipkin
+  service: otel-collector-opentelemetry-collector.opentelemetry:9411
+  sampling:
+    overall: 100
+  config:
+    trace_id_128bit: true
+    propagation_modes:
+      - TRACE_CONTEXT

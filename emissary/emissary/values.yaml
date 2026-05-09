@@ -1,0 +1,49 @@
+replicaCount: 1
+
+image:
+  repository: docker.io/datawire/emissary
+  tag: "3.12.2"
+
+# Use NodePort so we can port-forward easily in kind
+service:
+  type: NodePort
+  ports:
+  - name: http
+    port: 80
+    targetPort: 8080
+    nodePort: 30080
+
+# Reduce resource requirements for kind
+resources:
+  requests:
+    cpu: 200m
+    memory: 256Mi
+  limits:
+    cpu: 1000m
+    memory: 512Mi
+
+# Single replica for eval
+autoscaling:
+  enabled: false
+
+# Admin service exposes /metrics on port 8877
+adminService:
+  create: true
+  type: ClusterIP
+  port: 8877
+
+# Enable Prometheus scraping annotations
+podAnnotations:
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "8877"
+  prometheus.io/path: "/metrics"
+
+# Disable statsd exporter (deprecated)
+prometheusExporter:
+  enabled: false
+
+# Tolerations for kind control-plane
+tolerations:
+  - key: node-role.kubernetes.io/control-plane
+    operator: Exists
+    effect: NoSchedule

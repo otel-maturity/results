@@ -1,0 +1,10 @@
+---
+apiVersion: getambassador.io/v3alpha1
+kind: Mapping
+metadata:
+  name: otel-eval-backend-mapping
+  namespace: emissary
+spec:
+  hostname: "*"
+  prefix: /
+  service: otel-eval-backend.demo:3000
