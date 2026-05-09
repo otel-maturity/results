@@ -1,0 +1,78 @@
+# Traefik Helm values for OTel evaluation
+# Chart: traefik/traefik v40.0.0 (Traefik v3.7.0)
+
+# Disable update checks / anonymous usage
+global:
+  checkNewVersion: false
+  sendAnonymousUsage: false
+
+# Enable OTLP tracing via gRPC
+tracing:
+  addInternals: true
+  otlp:
+    enabled: true
+    grpc:
+      enabled: true
+      endpoint: "otel-collector-opentelemetry-collector.opentelemetry.svc.cluster.local:4317"
+      insecure: true
+
+# Enable OTLP metrics via gRPC (in addition to Prometheus)
+metrics:
+  addInternals: true
+  prometheus:
+    entryPoint: metrics
+    addEntryPointsLabels: true
+    addRoutersLabels: true
+    addServicesLabels: true
+    service:
+      enabled: true
+  otlp:
+    enabled: true
+    addEntryPointsLabels: true
+    addRoutersLabels: true
+    addServicesLabels: true
+    grpc:
+      enabled: true
+      endpoint: "otel-collector-opentelemetry-collector.opentelemetry.svc.cluster.local:4317"
+      insecure: true
+
+# Enable OTLP logs (experimental feature in Traefik v3)
+experimental:
+  otlpLogs: true
+
+logs:
+  general:
+    format: json
+    level: INFO
+    otlp:
+      enabled: true
+      grpc:
+        enabled: true
+        endpoint: "otel-collector-opentelemetry-collector.opentelemetry.svc.cluster.local:4317"
+        insecure: true
+  access:
+    enabled: true
+    format: json
+    otlp:
+      enabled: true
+      grpc:
+        enabled: true
+        endpoint: "otel-collector-opentelemetry-collector.opentelemetry.svc.cluster.local:4317"
+        insecure: true
+
+# Expose the web entrypoint (port 80) and metrics (port 9100)
+ports:
+  web:
+    port: 8000
+    expose:
+      default: true
+    exposedPort: 80
+  metrics:
+    port: 9100
+    expose:
+      default: false
+
+# Use ClusterIP so we can port-forward (LoadBalancer stays Pending in kind)
+service:
+  spec:
+    type: ClusterIP
