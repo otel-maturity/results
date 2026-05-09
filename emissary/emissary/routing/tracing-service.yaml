@@ -1,0 +1,13 @@
+apiVersion: getambassador.io/v3alpha1
+kind: TracingService
+metadata:
+  name: tracing
+  namespace: emissary
+spec:
+  service: "otel-collector-opentelemetry-collector.opentelemetry.svc.cluster.local:9411"
+  driver: zipkin
+  config:
+    trace_id_128bit: true
+    shared_span_context: false
+  sampling:
+    random: 100
