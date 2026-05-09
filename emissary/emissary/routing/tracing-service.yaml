@@ -1,0 +1,14 @@
+apiVersion: getambassador.io/v3alpha1
+kind: TracingService
+metadata:
+  name: otel-tracing
+  namespace: emissary
+spec:
+  driver: opentelemetry
+  service: otel-collector-opentelemetry-collector.opentelemetry:4317
+  config:
+    service_name: emissary-ingress
+    trace_id_128bit: true
+    propagation_modes:
+      - TRACE_CONTEXT
+      - B3
