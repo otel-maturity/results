@@ -1,0 +1,29 @@
+replicaCount: 1
+
+service:
+  type: ClusterIP   # kind cluster has no LoadBalancer; use port-forward
+
+adminService:
+  create: true
+  type: ClusterIP
+  port: 8877
+
+# Disable the deprecated statsd-exporter sidecar — Envoy exposes Prometheus natively
+prometheusExporter:
+  enabled: false
+
+# Annotate pods for Prometheus scraping discovery (informational)
+podAnnotations:
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "8877"
+  prometheus.io/path: "/metrics"
+
+resources:
+  requests:
+    memory: "256Mi"
+    cpu: "200m"
+  limits:
+    memory: "512Mi"
+    cpu: "1000m"
+
+createDefaultListeners: true
