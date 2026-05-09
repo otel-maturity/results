@@ -1,0 +1,1024 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Emissary-ingress — OpenTelemetry Maturity Report</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <script>
+        (function () {
+            var theme = 'dark';
+            try {
+                var stored = localStorage.getItem('theme');
+                if (stored === 'light' || stored === 'dark') theme = stored;
+            } catch (e) {}
+            document.documentElement.setAttribute('data-theme', theme);
+        })();
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        /* ── Theme tokens (mirror otel-maturity.io) ────────────────── */
+        :root,
+        :root[data-theme="dark"] {
+            --bg-50: #060912;
+            --bg-100: #101622;
+            --bg-150: #19202d;
+            --border: #232c3a;
+            --border-strong: #38445a;
+            --text-intense: #f5f9ff;
+            --text-default: #9aa6b8;
+            --text-subtle: #67738a;
+            --electric: #0ea5e9;
+            --electric-bright: #38bdf8;
+            --electric-glow: #67e8f9;
+            --green: #62d08d;
+            --amber: #f5b860;
+            --red: #f87171;
+            --surface: #101622;
+            --surface-glass: rgba(29, 32, 41, 0.5);
+            --grid-line: rgba(255, 255, 255, 0.02);
+            --bg-glow-1: rgba(56, 189, 248, 0.14);
+            --bg-glow-2: rgba(14, 165, 233, 0.08);
+            --visual-glow: rgba(56, 189, 248, 0.24);
+            --chart-grid: rgba(255, 255, 255, 0.07);
+            --chart-label: #d0d4d9;
+            --chart-fill: rgba(56, 189, 248, 0.18);
+            --chart-line: #38bdf8;
+            --chart-point-bg: #67e8f9;
+            --chart-point-border: #38bdf8;
+            --underline-soft: rgba(56, 189, 248, 0.4);
+
+            --level-0-bg: rgba(248, 113, 113, 0.12);
+            --level-0-border: rgba(248, 113, 113, 0.35);
+            --level-0-fg: #fca5a5;
+            --level-1-bg: rgba(245, 184, 96, 0.12);
+            --level-1-border: rgba(245, 184, 96, 0.35);
+            --level-1-fg: #fbbf6b;
+            --level-2-bg: rgba(56, 189, 248, 0.12);
+            --level-2-border: rgba(56, 189, 248, 0.35);
+            --level-2-fg: #7dd3fc;
+            --level-3-bg: rgba(98, 208, 141, 0.12);
+            --level-3-border: rgba(98, 208, 141, 0.35);
+            --level-3-fg: #86efac;
+
+            --opp-bg: rgba(245, 184, 96, 0.08);
+            --opp-border: #f5b860;
+            --opp-fg: #fbbf6b;
+            --code-bg: rgba(56, 189, 248, 0.08);
+            --code-fg: #7dd3fc;
+        }
+
+        :root[data-theme="light"] {
+            --bg-50: #f8fafc;
+            --bg-100: #ffffff;
+            --bg-150: #f1f5f9;
+            --border: #e1e6ed;
+            --border-strong: #adb6c2;
+            --text-intense: #0c1322;
+            --text-default: #4a5568;
+            --text-subtle: #6b7589;
+            --electric: #0284c7;
+            --electric-bright: #0ea5e9;
+            --electric-glow: #0891b2;
+            --green: #16a34a;
+            --amber: #c2710c;
+            --red: #dc2626;
+            --surface: #ffffff;
+            --surface-glass: rgba(255, 255, 255, 0.7);
+            --grid-line: rgba(15, 23, 42, 0.04);
+            --bg-glow-1: rgba(56, 189, 248, 0.18);
+            --bg-glow-2: rgba(2, 132, 199, 0.08);
+            --visual-glow: rgba(14, 165, 233, 0.18);
+            --chart-grid: rgba(15, 23, 42, 0.08);
+            --chart-label: #475569;
+            --chart-fill: rgba(14, 165, 233, 0.16);
+            --chart-line: #0284c7;
+            --chart-point-bg: #06b6d4;
+            --chart-point-border: #0284c7;
+            --underline-soft: rgba(2, 132, 199, 0.35);
+
+            --level-0-bg: #fff1f2;
+            --level-0-border: #fda4af;
+            --level-0-fg: #be123c;
+            --level-1-bg: #fff7ed;
+            --level-1-border: #fdba74;
+            --level-1-fg: #b45309;
+            --level-2-bg: #ecfeff;
+            --level-2-border: #67e8f9;
+            --level-2-fg: #0e7490;
+            --level-3-bg: #f0fdf4;
+            --level-3-border: #86efac;
+            --level-3-fg: #166534;
+
+            --opp-bg: #fff7ed;
+            --opp-border: #f59e0b;
+            --opp-fg: #92400e;
+            --code-bg: #ecfeff;
+            --code-fg: #0e7490;
+        }
+
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        html, body { margin: 0; padding: 0; }
+
+        body {
+            font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
+            background: var(--bg-50);
+            color: var(--text-intense);
+            min-height: 100vh;
+            line-height: 1.6;
+            overflow-x: hidden;
+            position: relative;
+            transition: background-color .25s ease, color .25s ease;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        /* ── Ambient background (matches landing page) ─────────────── */
+        .bg {
+            position: fixed; inset: 0; z-index: 0; pointer-events: none;
+            background:
+                radial-gradient(ellipse 50% 60% at 75% 0%, var(--bg-glow-1), transparent 60%),
+                radial-gradient(ellipse 40% 50% at 20% 100%, var(--bg-glow-2), transparent 60%),
+                var(--bg-50);
+        }
+        .grid-overlay {
+            position: fixed; inset: 0; z-index: 0; pointer-events: none;
+            background-image:
+                linear-gradient(to right, var(--grid-line) 1px, transparent 1px),
+                linear-gradient(to bottom, var(--grid-line) 1px, transparent 1px);
+            background-size: 64px 64px;
+            mask-image: radial-gradient(ellipse 90% 80% at 50% 30%, black, transparent 90%);
+        }
+
+        a {
+            color: var(--electric-bright);
+            text-decoration: none;
+            border-bottom: 1px dotted var(--underline-soft);
+            transition: color .15s ease, border-color .15s ease;
+        }
+        a:hover { color: var(--electric-glow); border-bottom-color: var(--electric-glow); }
+
+        /* ── Page scaffolding ──────────────────────────────────────── */
+        .page {
+            position: relative; z-index: 1;
+            padding: 24px clamp(20px, 5vw, 48px) 0;
+        }
+        .topbar {
+            max-width: 1080px; margin: 0 auto;
+            display: flex; align-items: center; justify-content: space-between; gap: 16px;
+        }
+        .topbar-meta {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12px; color: var(--text-subtle);
+        }
+        .theme-toggle {
+            display: inline-flex; align-items: center; justify-content: center;
+            width: 32px; height: 32px;
+            background: var(--surface-glass);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text-default);
+            cursor: pointer;
+            backdrop-filter: blur(8px);
+            transition: color .15s ease, border-color .15s ease, background-color .15s ease;
+        }
+        .theme-toggle:hover { color: var(--text-intense); border-color: var(--border-strong); }
+        .theme-toggle svg { width: 16px; height: 16px; display: block; }
+        .theme-toggle .icon-moon { display: none; }
+        :root[data-theme="light"] .theme-toggle .icon-moon { display: block; }
+        :root[data-theme="light"] .theme-toggle .icon-sun { display: none; }
+
+        /* ── Hero header ───────────────────────────────────────────── */
+        .site-header {
+            position: relative; z-index: 1;
+            padding: 48px clamp(20px, 5vw, 48px) 56px;
+        }
+        .header-inner { max-width: 1080px; margin: 0 auto; }
+        .pill {
+            display: inline-flex; align-items: center; gap: 8px;
+            font-size: 11px; color: var(--text-default);
+            padding: 6px 12px;
+            border: 1px solid var(--border); border-radius: 999px;
+            text-transform: uppercase; letter-spacing: .1em; font-weight: 500;
+            background: var(--surface-glass); backdrop-filter: blur(8px);
+            margin-bottom: 24px;
+        }
+        .pulse { width: 6px; height: 6px; border-radius: 50%; background: var(--green); animation: pulse 2.2s ease-in-out infinite; }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(98, 208, 141, .5); }
+            50% { opacity: .7; box-shadow: 0 0 0 6px rgba(98, 208, 141, 0); }
+        }
+        h1.title {
+            font-size: clamp(34px, 5vw, 52px);
+            font-weight: 600; letter-spacing: -.025em; line-height: 1.05;
+            color: var(--text-intense);
+            margin: 0 0 16px;
+        }
+        h1.title .accent {
+            background: linear-gradient(135deg, var(--electric), var(--electric-glow));
+            -webkit-background-clip: text; background-clip: text; color: transparent;
+        }
+        .subtitle {
+            font-size: clamp(15px, 1.4vw, 17px);
+            color: var(--text-default); line-height: 1.6;
+            max-width: 640px;
+            margin: 0 0 28px;
+        }
+        .header-meta {
+            display: flex; flex-wrap: wrap; gap: 20px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12px; color: var(--text-subtle);
+        }
+        .header-meta span { display: inline-flex; align-items: center; gap: 6px; }
+        .header-meta strong { color: var(--text-default); font-weight: 500; }
+        .header-meta .label { color: var(--text-subtle); text-transform: uppercase; letter-spacing: .08em; font-size: 10px; }
+
+        /* ── Layout ────────────────────────────────────────────────── */
+        .container {
+            position: relative; z-index: 1;
+            max-width: 1080px; margin: 0 auto;
+            padding: 16px clamp(20px, 5vw, 48px) 40px;
+        }
+
+        /* ── Section title ─────────────────────────────────────────── */
+        .section-title {
+            font-size: 11px; font-weight: 600;
+            color: var(--text-subtle); text-transform: uppercase;
+            letter-spacing: .12em;
+            padding-bottom: 12px;
+            margin-bottom: 20px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        /* ── Surface cards (glass) ─────────────────────────────────── */
+        .card {
+            background: var(--surface-glass);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            backdrop-filter: blur(12px);
+            padding: 28px;
+            margin-bottom: 24px;
+        }
+
+        /* ── Radar chart ───────────────────────────────────────────── */
+        .chart-wrap {
+            position: relative;
+            display: flex; justify-content: center; align-items: center;
+            padding: 8px 0 16px;
+        }
+        .chart-wrap::before {
+            content: ""; position: absolute; inset: 0;
+            background: radial-gradient(ellipse 55% 55% at 50% 50%, var(--visual-glow), transparent 70%);
+            filter: blur(40px); pointer-events: none; z-index: 0;
+        }
+        .chart-wrap canvas { position: relative; z-index: 1; max-width: 480px; max-height: 480px; }
+
+        .score-legend {
+            display: flex; justify-content: center; gap: 24px; flex-wrap: wrap;
+            margin-top: 8px; font-size: 12px; color: var(--text-default);
+        }
+        .score-legend-item { display: inline-flex; align-items: center; gap: 8px; }
+        .score-legend-dot { width: 10px; height: 10px; border-radius: 50%; }
+
+        /* ── Summary table ─────────────────────────────────────────── */
+        .summary-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+        .summary-table th {
+            text-align: left; padding: 12px 14px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px; font-weight: 500;
+            text-transform: uppercase; letter-spacing: .08em;
+            color: var(--text-subtle);
+            border-bottom: 1px solid var(--border);
+        }
+        .summary-table td {
+            padding: 14px;
+            color: var(--text-default);
+            border-bottom: 1px solid var(--border);
+            vertical-align: top;
+        }
+        .summary-table td strong { color: var(--text-intense); font-weight: 600; }
+        .summary-table tr:last-child td { border-bottom: none; }
+        .summary-table tr:hover td { background: rgba(255, 255, 255, 0.02); }
+        :root[data-theme="light"] .summary-table tr:hover td { background: rgba(15, 23, 42, 0.025); }
+
+        /* ── Level badges (semantic palette) ───────────────────────── */
+        .level-badge {
+            display: inline-block; padding: 3px 10px; border-radius: 999px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px; font-weight: 500; white-space: nowrap;
+            border: 1px solid transparent;
+        }
+        .level-0 { background: var(--level-0-bg); color: var(--level-0-fg); border-color: var(--level-0-border); }
+        .level-1 { background: var(--level-1-bg); color: var(--level-1-fg); border-color: var(--level-1-border); }
+        .level-2 { background: var(--level-2-bg); color: var(--level-2-fg); border-color: var(--level-2-border); }
+        .level-3 { background: var(--level-3-bg); color: var(--level-3-fg); border-color: var(--level-3-border); }
+
+        /* ── Signal cards ──────────────────────────────────────────── */
+        .signals-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+        .signal-card {
+            border-radius: 12px;
+            padding: 20px;
+            text-align: center;
+            border: 1px solid var(--border);
+            background: var(--bg-100);
+            transition: border-color .15s ease, transform .15s ease;
+        }
+        .signal-card.flowing { border-color: var(--level-3-border); background: var(--level-3-bg); }
+        .signal-card.partial { border-color: var(--level-1-border); background: var(--level-1-bg); }
+        .signal-card.not-flowing { border-color: var(--level-0-border); background: var(--level-0-bg); }
+        .signal-icon { font-size: 1.8rem; margin-bottom: 8px; }
+        .signal-name {
+            font-size: 14px; font-weight: 600;
+            color: var(--text-intense);
+            margin-bottom: 6px;
+        }
+        .signal-status {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px; font-weight: 500;
+            text-transform: uppercase; letter-spacing: .06em;
+        }
+        .signal-card.flowing .signal-status { color: var(--level-3-fg); }
+        .signal-card.partial .signal-status { color: var(--level-1-fg); }
+        .signal-card.not-flowing .signal-status { color: var(--level-0-fg); }
+        .signal-detail { font-size: 12px; color: var(--text-default); margin-top: 8px; }
+
+        /* ── Dimension sections (collapsibles) ─────────────────────── */
+        .dimension-section { margin-bottom: 12px; }
+        details {
+            border-radius: 12px;
+            border: 1px solid var(--border);
+            background: var(--surface-glass);
+            backdrop-filter: blur(12px);
+            overflow: hidden;
+            transition: border-color .15s ease;
+        }
+        details[open] { border-color: var(--border-strong); }
+        summary {
+            display: flex; align-items: center; gap: 14px;
+            padding: 16px 20px; cursor: pointer;
+            list-style: none; user-select: none;
+            transition: background .15s ease;
+        }
+        summary:hover { background: rgba(255, 255, 255, 0.02); }
+        :root[data-theme="light"] summary:hover { background: rgba(15, 23, 42, 0.025); }
+        summary::-webkit-details-marker { display: none; }
+        .dim-title { font-weight: 600; font-size: 15px; color: var(--text-intense); flex: 1; }
+        .dim-summary { font-size: 13px; color: var(--text-default); }
+        .summary-arrow {
+            margin-left: auto; color: var(--text-subtle);
+            transition: transform .2s ease;
+            font-size: 11px;
+        }
+        details[open] .summary-arrow { transform: rotate(90deg); color: var(--electric-bright); }
+
+        .dim-content {
+            padding: 20px 24px 24px;
+            border-top: 1px solid var(--border);
+            background: var(--bg-100);
+        }
+        .dim-content h4 {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px; font-weight: 500;
+            text-transform: uppercase; letter-spacing: .1em;
+            color: var(--text-subtle);
+            margin: 18px 0 10px;
+        }
+        .dim-content h4:first-child { margin-top: 0; }
+        .dim-content p { font-size: 14px; color: var(--text-default); margin-bottom: 8px; }
+        .dim-content ul { padding-left: 20px; }
+        .dim-content li { font-size: 14px; color: var(--text-default); margin-bottom: 6px; }
+        code {
+            background: var(--code-bg); color: var(--code-fg);
+            padding: 1px 6px; border-radius: 4px;
+            font-family: 'JetBrains Mono', monospace; font-size: 12px;
+        }
+
+        .checklist { list-style: none; padding: 0; }
+        .checklist li {
+            display: flex; gap: 10px; align-items: flex-start;
+            font-size: 13px; padding: 4px 0;
+            color: var(--text-default);
+        }
+        .check-pass { color: var(--green); font-weight: 600; flex-shrink: 0; }
+        .check-fail { color: var(--red); font-weight: 600; flex-shrink: 0; }
+
+        .opportunity-box {
+            background: var(--opp-bg);
+            border-left: 3px solid var(--opp-border);
+            padding: 12px 16px;
+            border-radius: 0 8px 8px 0;
+            margin: 10px 0;
+            font-size: 13px;
+            color: var(--opp-fg);
+        }
+        .opportunity-box strong { color: var(--opp-fg); }
+
+        /* ── Key takeaways ─────────────────────────────────────────── */
+        .takeaways-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+        .takeaway-box {
+            border-radius: 12px;
+            padding: 20px 22px;
+            border: 1px solid;
+        }
+        .takeaway-box.strengths { background: var(--level-3-bg); border-color: var(--level-3-border); }
+        .takeaway-box.improvements { background: var(--level-1-bg); border-color: var(--level-1-border); }
+        .takeaway-box.observations { background: var(--level-2-bg); border-color: var(--level-2-border); }
+        .takeaway-box h3 {
+            font-size: 13px; font-weight: 600;
+            text-transform: uppercase; letter-spacing: .08em;
+            margin-bottom: 12px;
+        }
+        .takeaway-box.strengths h3 { color: var(--level-3-fg); }
+        .takeaway-box.improvements h3 { color: var(--level-1-fg); }
+        .takeaway-box.observations h3 { color: var(--level-2-fg); }
+        .takeaway-box ul { padding-left: 18px; }
+        .takeaway-box li {
+            font-size: 13px; margin-bottom: 8px; color: var(--text-default);
+        }
+        .takeaway-box li strong { color: var(--text-intense); font-weight: 600; }
+
+        /* ── Footer ────────────────────────────────────────────────── */
+        .site-footer {
+            position: relative; z-index: 1;
+            border-top: 1px solid var(--border);
+            padding: 24px clamp(20px, 5vw, 48px) 32px;
+            margin-top: 40px;
+        }
+        .footer-inner {
+            max-width: 1080px; margin: 0 auto;
+            display: flex; flex-wrap: wrap; gap: 16px;
+            align-items: center; justify-content: space-between;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px; color: var(--text-subtle);
+        }
+        .footer-inner a { color: var(--electric-bright); }
+        .corner-flow { display: inline-flex; gap: 6px; align-items: center; opacity: .85; }
+        .corner-flow .node { width: 6px; height: 6px; border-radius: 50%; }
+        .corner-flow .line { width: 14px; height: 1px; background: var(--border-strong); }
+
+        /* ── Responsive ────────────────────────────────────────────── */
+        @media (max-width: 700px) {
+            .signals-grid { grid-template-columns: 1fr; }
+            .takeaways-grid { grid-template-columns: 1fr; }
+            .header-meta { gap: 12px; }
+            summary { flex-wrap: wrap; }
+            .dim-summary { width: 100%; padding-left: 36px; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="bg"></div>
+<div class="grid-overlay"></div>
+
+<!-- ═══════════════════════════════════════════════════════ TOP BAR -->
+<div class="page">
+    <header class="topbar">
+        <span class="topbar-meta">otel-maturity · report</span>
+        <button id="theme-toggle" class="theme-toggle" type="button" aria-label="Toggle light and dark theme">
+            <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <circle cx="12" cy="12" r="4"></circle>
+                <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"></path>
+            </svg>
+            <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+            </svg>
+        </button>
+    </header>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ HEADER -->
+<!--
+  TEMPLATE VARIABLES (replace all {{...}} placeholders before use):
+    Emissary-ingress        — e.g. "Tekton Pipelines"
+    CNCF Incubating Project   — e.g. "CNCF Graduated Project"
+    v3.12.2 (Helm 8.12.2)     — e.g. "v1.11.1"
+    2026-05-09           — e.g. "2026-05-01"
+    https://github.com/emissary-ingress/emissary    — e.g. "https://github.com/tektoncd/pipeline"
+    github.com/emissary-ingress/emissary  — e.g. "github.com/tektoncd/pipeline"
+    Telemetry collected in kind cluster (otel-eval-emissary) · OTel Collector contrib v0.150.1 · evaluate-otel-maturity v0.0.2 · generate-otel-report v0.0.6          — e.g. "Telemetry collected in kind cluster with OTel Collector file exporter"
+    evaluate-otel-maturity v0.0.2       — e.g. "evaluate-otel-maturity v0.0.2"
+
+  DIMENSION SCORES (0–3 per dimension):
+    1   — Integration Surface
+    1       — Semantic Conventions
+    1      — Resource Attributes & Configuration
+    0         — Trace Modeling & Context Propagation
+    0   — Multi-Signal Observability
+    1       — Audience & Signal Quality
+    1     — Stability & Change Management
+-->
+<header class="site-header">
+    <div class="header-inner">
+        <div class="pill">
+            <span class="pulse"></span>
+            <span>CNCF Incubating Project</span>
+        </div>
+        <h1 class="title">Emissary-ingress <span class="accent">maturity report.</span></h1>
+        <p class="subtitle">
+            A dimension-by-dimension look at how Emissary-ingress supports OpenTelemetry,
+            evaluated against the draft OTel Support Maturity Model.
+        </p>
+        <div class="header-meta">
+            <span><span class="label">Version</span><strong>v3.12.2 (Helm 8.12.2)</strong></span>
+            <span><span class="label">Evaluated</span><strong>2026-05-09</strong></span>
+            <span><span class="label">Model</span><strong>OTel Support Maturity (draft)</strong></span>
+            <span><span class="label">Skill</span><strong>evaluate-otel-maturity v0.0.2</strong></span>
+        </div>
+    </div>
+</header>
+
+<div class="container">
+
+    <!-- ═══════════════════════════════════════════════════ RADAR CHART -->
+    <div class="card">
+        <div class="section-title">Maturity overview</div>
+        <div class="chart-wrap">
+            <canvas id="radarChart"></canvas>
+        </div>
+        <div class="score-legend">
+            <div class="score-legend-item"><div class="score-legend-dot" style="background: var(--level-0-fg)"></div> 0 — Instrumented</div>
+            <div class="score-legend-item"><div class="score-legend-dot" style="background: var(--level-1-fg)"></div> 1 — OTel-Aligned</div>
+            <div class="score-legend-item"><div class="score-legend-dot" style="background: var(--level-2-fg)"></div> 2 — OTel-Native</div>
+            <div class="score-legend-item"><div class="score-legend-dot" style="background: var(--level-3-fg)"></div> 3 — OTel-Optimized</div>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════ SUMMARY TABLE -->
+    <div class="card">
+        <div class="section-title">Dimension scores</div>
+        <table class="summary-table">
+            <thead>
+            <tr>
+                <th>Dimension</th>
+                <th>Level</th>
+                <th>Summary</th>
+            </tr>
+            </thead>
+            <tbody>
+            <!--
+              For each row, set the level-badge class to match the score:
+                level-0 → "0 — Instrumented"
+                level-1 → "1 — OTel-Aligned"
+                level-2 → "2 — OTel-Native"
+                level-3 → "3 — OTel-Optimized"
+              Replace {{SUMMARY_*}} with a one-line description of findings.
+            -->
+            <tr>
+                <td><strong>Integration Surface</strong></td>
+                <td><span class="level-badge level-1">1 — OTel-Aligned</span></td>
+                <td>OTLP tracing driver exists but is WIP; metrics only via Prometheus scrape; no OTLP log export</td>
+            </tr>
+            <tr>
+                <td><strong>Semantic Conventions</strong></td>
+                <td><span class="level-badge level-1">1 — OTel-Aligned</span></td>
+                <td>Envoy Prometheus metrics use proprietary envoy_* naming; no OTel semconv alignment; traces use deprecated HTTP attributes</td>
+            </tr>
+            <tr>
+                <td><strong>Resource Attributes &amp; Configuration</strong></td>
+                <td><span class="level-badge level-1">1 — OTel-Aligned</span></td>
+                <td>No native service.name from Emissary itself; identity is pipeline-derived; no OTEL_* env var support</td>
+            </tr>
+            <tr>
+                <td><strong>Trace Modeling &amp; Context Propagation</strong></td>
+                <td><span class="level-badge level-0">0 — Instrumented</span></td>
+                <td>Emissary emits no spans in v3.12.2 (OTel driver WIP); no trace context propagation to upstream services</td>
+            </tr>
+            <tr>
+                <td><strong>Multi-Signal Observability</strong></td>
+                <td><span class="level-badge level-0">0 — Instrumented</span></td>
+                <td>Only Prometheus metrics are effectively usable; traces absent; logs absent; no cross-signal correlation</td>
+            </tr>
+            <tr>
+                <td><strong>Audience &amp; Signal Quality</strong></td>
+                <td><span class="level-badge level-1">1 — OTel-Aligned</span></td>
+                <td>407 Prometheus metric types provide operational coverage; naming is Envoy-internal; no user-oriented signal design</td>
+            </tr>
+            <tr>
+                <td><strong>Stability &amp; Change Management</strong></td>
+                <td><span class="level-badge level-1">1 — OTel-Aligned</span></td>
+                <td>OTel driver WIP status disclosed in logs but not docs; telemetry changes not treated as a contract; no schema URL</td>
+            </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════ SIGNALS -->
+    <!--
+      Each signal card takes one of three CSS classes:
+        flowing      → green  (signal confirmed working end-to-end)
+        partial      → amber  (signal exists but incomplete / partially configured)
+        not-flowing  → red    (signal absent or not exported via OTel)
+    -->
+    <div class="card">
+        <div class="section-title">Signal status</div>
+        <div class="signals-grid">
+
+            <div class="signal-card not-flowing">
+                <div class="signal-icon">🔍</div>
+                <div class="signal-name">Traces</div>
+                <div class="signal-status">✗ Not Flowing</div>
+                <div class="signal-detail">OTel driver (driver: opentelemetry) is WIP in v3.12.2; HCM tracing config is empty {}; tracing cluster shows cx_total: 0</div>
+            </div>
+
+            <div class="signal-card partial">
+                <div class="signal-icon">📊</div>
+                <div class="signal-name">Metrics</div>
+                <div class="signal-status">~ Prometheus Only</div>
+                <div class="signal-detail">407 unique metric names scraped from admin port 8877 /metrics; no OTLP push; requires Prometheus receiver in OTel Collector</div>
+            </div>
+
+            <div class="signal-card not-flowing">
+                <div class="signal-icon">📋</div>
+                <div class="signal-name">Logs</div>
+                <div class="signal-status">✗ Not Flowing</div>
+                <div class="signal-detail">LogService CRD uses Envoy ALS gRPC protocol — incompatible with OTLP receiver; no OTLP log export path exists</div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════ DIMENSIONS -->
+    <div class="section-title" style="margin-top: 32px;">Dimension details</div>
+
+    <!-- 1. Integration Surface -->
+    <div class="dimension-section">
+        <details open>
+            <summary>
+                <span class="level-badge level-1">1</span>
+                <span class="dim-title">Integration Surface</span>
+                <span class="dim-summary">OTLP tracing driver exists but is WIP; metrics only via Prometheus scrape; no OTLP log export</span>
+                <span class="summary-arrow">▶</span>
+            </summary>
+            <div class="dim-content">
+                <h4>What we observed</h4>
+                <p>Emissary-ingress v3.12.2 supports three tracing drivers via the <code>TracingService</code> CRD: <code>zipkin</code>, <code>datadog</code>, and <code>opentelemetry</code>. The <code>opentelemetry</code> driver generates a correct Envoy bootstrap config pointing to port 4317 via gRPC, but the HTTP Connection Manager (HCM) tracing config in each listener remains empty <code>{}</code> — so no spans are emitted and no trace context is propagated. The tracing cluster shows <code>cx_total: 0</code>. Metrics are exposed exclusively via Prometheus scrape on admin port 8877 (<code>/metrics</code>). Logs use Envoy's proprietary ALS gRPC protocol, which is incompatible with the standard OTLP receiver. No <code>OTEL_*</code> environment variables are supported; all configuration is CRD-based. Notably, v4.0.1 (post-evaluation) includes a working OTel distributed tracing how-to, suggesting the driver was fixed in v4.</p>
+
+                <h4>What's working well</h4>
+                <ul>
+                    <li>The <code>TracingService</code> CRD with <code>driver: opentelemetry</code> is correctly designed — the Envoy bootstrap config is generated with the right gRPC cluster, W3C Trace Context propagation mode, and 128-bit trace IDs. The infrastructure is in place; only the HCM hook is missing.</li>
+                    <li>Prometheus metrics on port 8877 are reliably scraped and converted to OTLP by the OTel Collector's Prometheus receiver, providing a working path for operational monitoring today.</li>
+                </ul>
+
+                <h4>Opportunities</h4>
+                <div class="opportunity-box">
+                    <strong>Complete the HCM tracing hook</strong> — Enabling the <code>opentelemetry</code> driver to populate the HTTP Connection Manager tracing config would immediately unlock span emission and W3C Trace Context propagation. This appears to be a targeted, fixable gap — confirmed fixed in v4.
+                </div>
+                <div class="opportunity-box">
+                    <strong>Add OTLP metrics push and document OTEL_* support</strong> — Adding native OTLP metrics emission alongside Prometheus scraping would enable a unified pipeline. Supporting <code>OTEL_EXPORTER_OTLP_ENDPOINT</code> and <code>OTEL_SERVICE_NAME</code> would allow users to plug Emissary into any OTel-compatible backend without a Prometheus receiver.
+                </div>
+
+                <h4>Checklist</h4>
+                <ul class="checklist">
+                    <li><span class="check-pass">✓</span> OTLP tracing driver (<code>driver: opentelemetry</code>) exists in the TracingService CRD</li>
+                    <li><span class="check-pass">✓</span> Prometheus metrics are reliably accessible and consumable via OTel Collector Prometheus receiver</li>
+                    <li><span class="check-fail">✗</span> OTLP is not the default or recommended export path — Prometheus scraping is the only working option</li>
+                    <li><span class="check-fail">✗</span> Standard <code>OTEL_*</code> environment variables are not supported; configuration is CRD-only</li>
+                </ul>
+            </div>
+        </details>
+    </div>
+
+    <!-- 2. Semantic Conventions -->
+    <div class="dimension-section">
+        <details>
+            <summary>
+                <span class="level-badge level-1">1</span>
+                <span class="dim-title">Semantic Conventions</span>
+                <span class="dim-summary">Envoy Prometheus metrics use proprietary envoy_* naming; no OTel semconv alignment; traces use deprecated HTTP attributes</span>
+                <span class="summary-arrow">▶</span>
+            </summary>
+            <div class="dim-content">
+                <h4>What we observed</h4>
+                <p>Emissary's 407 Prometheus metric names follow Envoy's internal naming conventions: <code>envoy_cluster_*</code>, <code>envoy_http_*</code>, <code>envoy_listener_*</code>, <code>envoy_server_*</code>, and <code>ambassador_*</code>. Data point labels use Envoy-internal names like <code>envoy_cluster_name</code>, <code>envoy_http_conn_manager_prefix</code>, <code>envoy_response_code_class</code>, and <code>ambassador_id</code> — none of which correspond to OTel semantic conventions. Since Emissary emits no spans itself, trace semconv alignment cannot be assessed for Emissary directly. Backend traces observed in the evaluation used deprecated HTTP attributes: <code>http.method</code>, <code>http.status_code</code>, <code>http.url</code>, <code>http.target</code>, <code>http.host</code>, <code>http.flavor</code>, <code>net.host.name</code>, <code>net.peer.ip</code>, and <code>net.transport</code> — all superseded in OTel HTTP semconv v1.23+.</p>
+
+                <h4>What's working well</h4>
+                <ul>
+                    <li>The <code>TracingService</code> CRD references W3C Trace Context (<code>TRACE_CONTEXT</code>) and <code>B3</code> propagation modes by their correct OTel names, showing awareness of the OTel propagation ecosystem.</li>
+                    <li>The <code>ambassador_*</code> metrics (<code>ambassador_aconf_time_seconds</code>, <code>ambassador_process_cpu_seconds_total</code>, <code>ambassador_process_resident_memory_bytes</code>) follow Prometheus naming conventions and provide useful process-level signals.</li>
+                </ul>
+
+                <h4>Opportunities</h4>
+                <div class="opportunity-box">
+                    <strong>Introduce an OTLP metrics path with OTel HTTP semconv names</strong> — When adding OTLP metrics export, consider mapping key Envoy stats to current OTel HTTP semantic conventions: <code>http.server.request.duration</code>, <code>http.server.active_requests</code>, <code>http.response.status_code</code>. This would enable off-the-shelf OTel dashboards and alerts without Envoy-specific knowledge.
+                </div>
+                <div class="opportunity-box">
+                    <strong>Align trace attributes with current OTel HTTP semconv when tracing is enabled</strong> — Once the OTel tracing driver is functional, ensure spans use current conventions: <code>http.request.method</code> (not <code>http.method</code>), <code>http.response.status_code</code> (not <code>http.status_code</code>), <code>url.full</code> (not <code>http.url</code>), <code>server.address</code> (not <code>net.host.name</code>).
+                </div>
+            </div>
+        </details>
+    </div>
+
+    <!-- 3. Resource Attributes & Configuration -->
+    <div class="dimension-section">
+        <details>
+            <summary>
+                <span class="level-badge level-1">1</span>
+                <span class="dim-title">Resource Attributes &amp; Configuration</span>
+                <span class="dim-summary">No native service.name from Emissary itself; identity is pipeline-derived; no OTEL_* env var support</span>
+                <span class="summary-arrow">▶</span>
+            </summary>
+            <div class="dim-content">
+                <h4>What we observed</h4>
+                <p>Emissary does not use the OTel SDK and sets no resource attributes natively. The <code>service.name: emissary-ingress</code> visible in metrics is set by the OTel Collector's Prometheus receiver from the scrape job's <code>job_name</code> — it is pipeline-derived, not emitted by Emissary. The <code>TracingService</code> CRD has a <code>config.service_name</code> field, which would set the service name in Envoy's bootstrap tracing config, but since the OTel driver is WIP this is never observed in practice. No <code>OTEL_EXPORTER_OTLP_ENDPOINT</code>, <code>OTEL_SERVICE_NAME</code>, or <code>OTEL_RESOURCE_ATTRIBUTES</code> environment variables are supported. Kubernetes metadata (<code>k8s.pod.uid</code>, <code>k8s.namespace.name</code>, <code>k8s.deployment.name</code>) was added by the OTel Collector's k8sattributes processor for k8s_cluster receiver metrics, but not for Prometheus-scraped metrics (due to Service DNS name vs. pod IP association).</p>
+
+                <h4>What's working well</h4>
+                <ul>
+                    <li>The <code>TracingService</code> CRD's <code>config.service_name</code> field shows awareness of service identity — once the OTel tracing driver is functional, this field would set <code>service.name</code> in Envoy's bootstrap config.</li>
+                    <li>The Kubernetes-native CRD configuration model integrates well with GitOps workflows, and the OTel Collector's k8sattributes processor can enrich metrics with <code>k8s.deployment.name</code>, <code>k8s.namespace.name</code>, and container metadata.</li>
+                </ul>
+
+                <h4>Opportunities</h4>
+                <div class="opportunity-box">
+                    <strong>Emit service.name, service.version, and service.instance.id natively</strong> — Adding OTel SDK resource detection (or equivalent) so that Emissary itself sets <code>service.name</code>, <code>service.version: 3.12.2</code>, and <code>service.instance.id</code> would ensure consistent identity across all signals without relying on pipeline configuration.
+                </div>
+                <div class="opportunity-box">
+                    <strong>Support OTEL_* environment variables for configuration</strong> — Exposing <code>OTEL_EXPORTER_OTLP_ENDPOINT</code> and <code>OTEL_RESOURCE_ATTRIBUTES</code> alongside the existing CRD-based model would allow operators to configure telemetry using standard OTel tooling and follow the OTel specification's configuration contract.
+                </div>
+            </div>
+        </details>
+    </div>
+
+    <!-- 4. Trace Modeling & Context Propagation -->
+    <div class="dimension-section">
+        <details>
+            <summary>
+                <span class="level-badge level-0">0</span>
+                <span class="dim-title">Trace Modeling &amp; Context Propagation</span>
+                <span class="dim-summary">Emissary emits no spans in v3.12.2 (OTel driver WIP); no trace context propagation to upstream services</span>
+                <span class="summary-arrow">▶</span>
+            </summary>
+            <div class="dim-content">
+                <h4>What we observed</h4>
+                <p>Emissary emits no spans in v3.12.2. The <code>opentelemetry</code> TracingService driver generates a correct Envoy bootstrap config (gRPC cluster pointing to port 4317 with <code>envoy.opentelemetry</code>), but the HTTP Connection Manager tracing config in each listener is empty <code>{}</code>. As a result, the tracing cluster shows <code>cx_total: 0</code> and no <code>tracing.*</code> stats appear. Context propagation was explicitly tested: requests sent with <code>traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01</code> arrived at the backend with <code>parentSpanId: null</code> — confirming Emissary did not forward the header. The <code>TracingService</code> was configured with <code>propagation_modes: [TRACE_CONTEXT, B3]</code>, but since the HCM tracing hook is inactive, no propagation occurs. This is tracked as GitHub issue <a href="https://github.com/emissary-ingress/emissary/issues/5573">#5573</a> (opened 2024-02-15, last updated 2026-04-14).</p>
+
+                <h4>What's working well</h4>
+                <ul>
+                    <li>The tracing architecture is sound: the <code>TracingService</code> CRD correctly specifies W3C Trace Context and B3 propagation modes, 128-bit trace IDs, and gRPC export — the design is right, only the HCM activation is missing.</li>
+                    <li>The issue is publicly tracked and acknowledged (#5573), and v4.0.1 documentation confirms a working OTel tracing integration, showing the project is actively progressing.</li>
+                </ul>
+
+                <h4>Opportunities</h4>
+                <div class="opportunity-box">
+                    <strong>Enable the HCM tracing hook for the opentelemetry driver</strong> — Populating the HTTP Connection Manager tracing configuration when <code>driver: opentelemetry</code> is set would immediately enable span emission and W3C Trace Context propagation to upstream services. This is the single highest-impact improvement for this dimension.
+                </div>
+                <div class="opportunity-box">
+                    <strong>Backport documentation of the WIP limitation to v3.x</strong> — Until users upgrade to v4, clearly documenting that <code>driver: opentelemetry</code> is non-functional in v3.x (and providing a migration guide to v4) would prevent misconfiguration and confusion.
+                </div>
+            </div>
+        </details>
+    </div>
+
+    <!-- 5. Multi-Signal Observability -->
+    <div class="dimension-section">
+        <details>
+            <summary>
+                <span class="level-badge level-0">0</span>
+                <span class="dim-title">Multi-Signal Observability</span>
+                <span class="dim-summary">Only Prometheus metrics are effectively usable; traces absent; logs absent; no cross-signal correlation</span>
+                <span class="summary-arrow">▶</span>
+            </summary>
+            <div class="dim-content">
+                <h4>What we observed</h4>
+                <p>Only one of three signals is effectively usable in v3.12.2. Metrics flow via Prometheus scrape (407 metric types from admin port 8877). Traces do not flow — the OTel driver is WIP. Logs do not flow — the <code>LogService</code> CRD uses Envoy's gRPC Access Log Service (ALS) protocol, which is incompatible with the standard OTLP receiver. No cross-signal correlation is possible: metrics carry no trace IDs or span IDs, there are no logs, and backend traces have no connection to Emissary metrics. The collection models also differ per signal: Prometheus pull for metrics, OTLP gRPC push (WIP) for traces, and Envoy ALS gRPC (protocol mismatch) for logs — requiring three different receiver configurations.</p>
+
+                <h4>What's working well</h4>
+                <ul>
+                    <li>Prometheus metrics provide comprehensive operational coverage today — 407 metric types covering <code>envoy_cluster_*</code>, <code>envoy_http_*</code>, <code>envoy_listener_*</code>, and <code>ambassador_*</code> signals. Standard Envoy dashboards (e.g., Grafana library) can be used without custom configuration.</li>
+                    <li>The project has CRD abstractions for all three signal types (<code>TracingService</code>, <code>LogService</code>, admin service for metrics), showing architectural intent to support multi-signal observability even if the implementations are at different maturity levels.</li>
+                </ul>
+
+                <h4>Opportunities</h4>
+                <div class="opportunity-box">
+                    <strong>Enable traces (fixes tracing driver) to unlock two-signal observability</strong> — Once the OTel tracing driver is functional, operators will be able to correlate aggregate metrics with individual request traces. Adding trace IDs to metrics (exemplars) would further enable pivoting from a slow-request metric to the specific trace.
+                </div>
+                <div class="opportunity-box">
+                    <strong>Add OTLP log export to replace or complement ALS</strong> — The <code>LogService</code> CRD's Envoy ALS integration could be complemented with an OTLP log export path. Once tracing is working, structured access logs emitted as OTLP log records with <code>trace_id</code> and <code>span_id</code> would enable true three-signal correlation.
+                </div>
+            </div>
+        </details>
+    </div>
+
+    <!-- 6. Audience & Signal Quality -->
+    <div class="dimension-section">
+        <details>
+            <summary>
+                <span class="level-badge level-1">1</span>
+                <span class="dim-title">Audience &amp; Signal Quality</span>
+                <span class="dim-summary">407 Prometheus metric types provide operational coverage; naming is Envoy-internal; no user-oriented signal design</span>
+                <span class="summary-arrow">▶</span>
+            </summary>
+            <div class="dim-content">
+                <h4>What we observed</h4>
+                <p>The 407 Prometheus metric types are comprehensive but primarily expose Envoy's internal stats. Useful operational metrics include <code>envoy_http_downstream_rq_total</code>, <code>envoy_cluster_upstream_rq_total</code>, and <code>envoy_cluster_circuit_breakers_default_cx_pool_open</code>. However, many are highly internal: <code>envoy_cluster_http2_inbound_empty_frames_flood</code>, <code>envoy_cluster_http2_inbound_priority_frames_flood</code>, <code>envoy_cluster_http2_inbound_window_update_frames_flood</code>. The <code>ambassador_*</code> process-level metrics (<code>ambassador_aconf_time_seconds</code>, <code>ambassador_process_cpu_seconds_total</code>, <code>ambassador_process_resident_memory_bytes</code>) are useful and well-named. Emissary emits no spans, so span naming quality cannot be assessed. Without tracing, operators can monitor aggregate health but cannot investigate individual failing requests.</p>
+
+                <h4>What's working well</h4>
+                <ul>
+                    <li>The 407 Prometheus metrics support basic monitoring and alerting without customization — standard Envoy dashboards exist in the Grafana dashboard library, giving operators an immediate starting point.</li>
+                    <li>The <code>ambassador_*</code> metrics provide clean process-level visibility into config processing time, CPU, and memory — these are well-suited for SLO-based monitoring.</li>
+                </ul>
+
+                <h4>Opportunities</h4>
+                <div class="opportunity-box">
+                    <strong>Design user-oriented signal layers alongside raw Envoy stats</strong> — Consider exposing a curated set of high-level OTel metrics (request rate, error rate, latency percentiles with OTel semconv names) in addition to the full Envoy stat dump. This would serve operators who don't need deep Envoy internals and enable off-the-shelf OTel dashboards.
+                </div>
+                <div class="opportunity-box">
+                    <strong>Enable traces to support root-cause investigation</strong> — The most impactful quality improvement is enabling the OTel tracing driver. With traces flowing, operators can move from aggregate metrics (e.g., elevated <code>envoy_cluster_upstream_rq_5xx</code>) to specific failing request traces, dramatically improving mean-time-to-resolution.
+                </div>
+            </div>
+        </details>
+    </div>
+
+    <!-- 7. Stability & Change Management -->
+    <div class="dimension-section">
+        <details>
+            <summary>
+                <span class="level-badge level-1">1</span>
+                <span class="dim-title">Stability &amp; Change Management</span>
+                <span class="dim-summary">OTel driver WIP status disclosed in logs but not docs; telemetry changes not treated as a contract; no schema URL</span>
+                <span class="summary-arrow">▶</span>
+            </summary>
+            <div class="dim-content">
+                <h4>What we observed</h4>
+                <p>The <code>opentelemetry</code> driver's WIP status is disclosed in Emissary's runtime logs (<em>"The OpenTelemetry tracing driver is work-in-progress. Functionality is incomplete and it is not intended for production use."</em>) but is not reflected in the <code>TracingService</code> reference documentation or the CRD schema. The v3.9 CHANGELOG presented the OTel driver as a feature, not as experimental. Major telemetry changes (LightStep driver removal, OTel driver introduction) are documented in the CHANGELOG. No schema URL is set on Emissary-emitted telemetry — the <code>schemaUrl: https://opentelemetry.io/schemas/1.18.0</code> visible on some metrics was set by the OTel Collector, not by Emissary. The <code>TracingService</code> CRD has an API version inconsistency: the <code>propagation_modes</code> field name differs between <code>v3alpha1</code> and <code>v1</code> (<code>v3PropagationModes</code>), handled transparently by webhook conversion.</p>
+
+                <h4>What's working well</h4>
+                <ul>
+                    <li>Major telemetry changes (LightStep driver removal, OTel driver introduction, Zipkin <code>HTTP_JSON_V1</code> deprecation) are documented in the CHANGELOG, showing some commitment to communicating telemetry evolution.</li>
+                    <li>The WIP disclosure in runtime logs is better than silence — operators who check logs will see the warning before investing time debugging a non-functional integration.</li>
+                </ul>
+
+                <h4>Opportunities</h4>
+                <div class="opportunity-box">
+                    <strong>Surface the WIP status prominently in documentation and CRD schema</strong> — Adding a <code>description</code> annotation to the <code>driver: opentelemetry</code> option in the CRD schema, and a prominent callout in the TracingService docs, would prevent v3.x users from silently misconfiguring a non-functional integration.
+                </div>
+                <div class="opportunity-box">
+                    <strong>Treat telemetry as a versioned contract with schema URLs</strong> — Setting <code>schemaUrl</code> on Emissary-emitted OTLP telemetry (once OTLP export is functional) and distinguishing stable from experimental telemetry in release notes would give operators confidence that telemetry won't break unexpectedly across upgrades.
+                </div>
+            </div>
+        </details>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════ KEY TAKEAWAYS -->
+    <div class="card" style="margin-top: 32px;">
+        <div class="section-title">Key takeaways</div>
+        <div class="takeaways-grid">
+            <div class="takeaway-box strengths">
+                <h3>● Strengths</h3>
+                <ul>
+                    <li><strong>Rich Prometheus metrics coverage</strong> — 407 unique Envoy metric types provide comprehensive operational visibility into cluster, HTTP, listener, server, and TLS behavior. Community dashboards (Grafana library) are available out-of-the-box.</li>
+                    <li><strong>OTel tracing architecture is in place</strong> — The <code>TracingService</code> CRD with <code>driver: opentelemetry</code>, W3C Trace Context propagation, 128-bit trace IDs, and gRPC export is correctly designed. The infrastructure is ready; only the HCM hook is missing — a fixable gap, not a fundamental design problem.</li>
+                    <li><strong>v4 shows significant improvement</strong> — The v4.0.1 release includes a documented, working "Distributed Tracing with OpenTelemetry and Dash0" integration, confirming the project is actively progressing toward OTel maturity.</li>
+                </ul>
+            </div>
+            <div class="takeaway-box improvements">
+                <h3>● Priority improvements</h3>
+                <ul>
+                    <li><strong>Fix the OTel tracing driver (critical)</strong> — Populating the HCM tracing config when <code>driver: opentelemetry</code> is set is the single highest-impact improvement. This unlocks span emission, W3C Trace Context propagation, and multi-signal observability in one change.</li>
+                    <li><strong>Add OTLP metrics push with native resource attributes</strong> — Supporting OTLP metrics export with <code>service.name</code>, <code>service.version</code>, and <code>service.instance.id</code> set natively would enable a unified OTel pipeline and eliminate the need for a Prometheus receiver.</li>
+                    <li><strong>Implement OTLP log export</strong> — Complementing the <code>LogService</code> CRD's ALS integration with an OTLP log export path, with trace context fields once tracing is working, would enable true three-signal correlation.</li>
+                    <li><strong>Document WIP status prominently</strong> — Adding a CRD schema <code>description</code> annotation and a docs callout for <code>driver: opentelemetry</code> in v3.x would prevent silent misconfiguration for users who haven't yet upgraded to v4.</li>
+                </ul>
+            </div>
+        </div>
+        <div class="takeaway-box observations" style="margin-top: 16px;">
+            <h3>● Notable observations</h3>
+            <ul>
+                <li><strong>WIP driver is a surprisingly small gap</strong> — v3.12.2 has all the OTel tracing infrastructure except the final HCM hook. The bootstrap config is correct, the CRD is correct, the cluster is defined — only the per-listener tracing activation is missing. The v4 fix confirms this was a targeted, surgical change.</li>
+                <li><strong>Prometheus receiver auto-sets service.name — creating an illusion</strong> — The OTel Collector's Prometheus receiver sets <code>service.name: emissary-ingress</code> from the scrape job's <code>job_name</code>. This looks like proper resource attribution but is entirely pipeline-derived. Emissary itself sets no resource attributes.</li>
+                <li><strong>k8sattributes enrichment did not apply to Prometheus metrics</strong> — Because the Prometheus receiver scrapes a Service DNS name (not a pod IP), the k8sattributes processor could not associate the scrape target with a pod. Operators who want Kubernetes metadata on Prometheus metrics need to configure pod-IP-based scraping or add static resource attributes in the collector pipeline.</li>
+            </ul>
+        </div>
+    </div>
+
+</div><!-- /container -->
+
+<footer class="site-footer">
+    <div class="footer-inner">
+        <span class="corner-flow">
+            <span class="node" style="background: var(--green)"></span>
+            <span class="line"></span>
+            <span class="node" style="background: var(--electric-bright)"></span>
+            <span class="line"></span>
+            <span class="node" style="background: var(--electric-glow)"></span>
+            <span style="margin-left: 4px">
+                evaluated · Emissary-ingress · <a href="https://github.com/emissary-ingress/emissary">github.com/emissary-ingress/emissary</a>
+            </span>
+        </span>
+        <span>Telemetry collected in kind cluster (otel-eval-emissary) · OTel Collector contrib v0.150.1 · evaluate-otel-maturity v0.0.2 · generate-otel-report v0.0.6</span>
+    </div>
+</footer>
+
+<script>
+    /*
+      Radar chart — colors track CSS custom properties so it adapts to theme toggles.
+      Score order must match labels exactly:
+        [Integration Surface, Semantic Conventions, Resource Attrs, Trace Modeling,
+         Multi-Signal, Audience & Quality, Stability & Change Mgmt]
+    */
+    const DIMENSION_SCORES = [
+        /* Integration Surface          */ 1,
+        /* Semantic Conventions         */ 1,
+        /* Resource Attrs & Config      */ 1,
+        /* Trace Modeling & Propagation */ 0,
+        /* Multi-Signal Observability   */ 0,
+        /* Audience & Signal Quality    */ 1,
+        /* Stability & Change Mgmt      */ 1,
+    ];
+
+    const PROJECT_LABEL = 'Emissary-ingress v3.12.2 (Helm 8.12.2)';
+
+    function readVar(name) {
+        return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    }
+
+    let radarChart;
+
+    function buildRadar(animate) {
+        const ctx = document.getElementById('radarChart').getContext('2d');
+        if (radarChart) radarChart.destroy();
+        radarChart = new Chart(ctx, {
+            type: 'radar',
+            data: {
+                labels: [
+                    ['Integration', 'Surface'],
+                    ['Semantic', 'Conventions'],
+                    ['Resource Attrs', '& Configuration'],
+                    ['Trace Modeling', '& Propagation'],
+                    ['Multi-Signal', 'Observability'],
+                    ['Audience &', 'Signal Quality'],
+                    ['Stability &', 'Change Mgmt']
+                ],
+                datasets: [{
+                    label: PROJECT_LABEL,
+                    data: DIMENSION_SCORES,
+                    backgroundColor: readVar('--chart-fill'),
+                    borderColor: readVar('--chart-line'),
+                    borderWidth: 2,
+                    pointBackgroundColor: readVar('--chart-point-bg'),
+                    pointBorderColor: readVar('--chart-point-border'),
+                    pointBorderWidth: 1.5,
+                    pointRadius: 4,
+                    pointHoverRadius: 6,
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                animation: animate ? { duration: 1400, easing: 'easeOutQuart' } : false,
+                scales: {
+                    r: {
+                        min: 0,
+                        max: 3,
+                        ticks: {
+                            stepSize: 1,
+                            callback: (v) => ['Instrumented', 'Aligned', 'Native', 'Optimized'][v] || v,
+                            font: { family: 'JetBrains Mono', size: 10 },
+                            color: readVar('--text-subtle'),
+                            backdropColor: 'transparent',
+                        },
+                        grid: { color: readVar('--chart-grid') },
+                        angleLines: { color: readVar('--chart-grid') },
+                        pointLabels: {
+                            font: { family: 'Inter', size: 12, weight: '500' },
+                            color: readVar('--chart-label'),
+                        }
+                    }
+                },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        backgroundColor: readVar('--bg-150'),
+                        titleColor: readVar('--text-intense'),
+                        bodyColor: readVar('--text-default'),
+                        borderColor: readVar('--border'),
+                        borderWidth: 1,
+                        padding: 10,
+                        titleFont: { family: 'Inter', weight: '600' },
+                        bodyFont: { family: 'JetBrains Mono', size: 11 },
+                        callbacks: {
+                            label: (ctx) => {
+                                const names = ['Instrumented', 'OTel-Aligned', 'OTel-Native', 'OTel-Optimized'];
+                                return ` Level ${ctx.raw} — ${names[ctx.raw]}`;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    buildRadar(true);
+
+    // ── Theme toggle ─────────────────────────────────────────────
+    const toggle = document.getElementById('theme-toggle');
+    toggle.addEventListener('click', () => {
+        const next = document.documentElement.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
+        document.documentElement.setAttribute('data-theme', next);
+        try { localStorage.setItem('theme', next); } catch (e) {}
+        buildRadar(false);
+    });
+</script>
+</body>
+</html>
