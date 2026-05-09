@@ -1,0 +1,19 @@
+# ContourConfiguration enabling OTLP tracing via the ExtensionService.
+# This patches the default "contour" ContourConfiguration that the Helm chart creates.
+apiVersion: projectcontour.io/v1alpha1
+kind: ContourConfiguration
+metadata:
+  name: contour
+  namespace: projectcontour
+spec:
+  tracing:
+    # Send pod hostname and namespace as span attributes
+    includePodDetail: true
+    # Reference the ExtensionService in the opentelemetry namespace
+    extensionService:
+      namespace: opentelemetry
+      name: otel-collector
+    # Service name reported in traces
+    serviceName: contour
+    # 100% sampling rate (default is "100")
+    overallSampling: "100"
