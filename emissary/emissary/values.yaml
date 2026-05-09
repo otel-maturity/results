@@ -1,0 +1,46 @@
+# Emissary-Ingress Helm values for OTel evaluation cluster
+# Chart: oci://ghcr.io/emissary-ingress/emissary-ingress version 4.0.1
+
+replicaCount: 1
+
+# Use NodePort so kind cluster can access the service
+service:
+  type: NodePort
+  ports:
+  - name: http
+    port: 80
+    targetPort: 8080
+    nodePort: 30080
+
+# Create default HTTP/HTTPS listeners automatically
+createDefaultListeners: true
+
+# Admin service exposes /metrics on port 8877
+adminService:
+  create: true
+  type: ClusterIP
+  port: 8877
+
+# Disable diagnostics UI (not needed for eval)
+module:
+  enabled: true
+  diagnostics:
+    enabled: false
+    allow_non_local: false
+
+# Disable ambassador cloud agent
+agent:
+  enabled: false
+
+resources:
+  requests:
+    cpu: 200m
+    memory: 300Mi
+  limits:
+    memory: 600Mi
+
+# Annotate pods for Prometheus scraping
+podAnnotations:
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "8877"
+  prometheus.io/path: "/metrics"

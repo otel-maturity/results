@@ -1,0 +1,25 @@
+---
+# Mapping routes all traffic through Emissary to the otel-eval-backend service
+apiVersion: getambassador.io/v3alpha1
+kind: Mapping
+metadata:
+  name: otel-eval-backend
+  namespace: emissary
+spec:
+  hostname: "*"
+  prefix: /
+  service: otel-eval-backend.demo:3000
+---
+# TracingService configures Emissary to emit OTLP traces to the OTel Collector
+apiVersion: getambassador.io/v3alpha1
+kind: TracingService
+metadata:
+  name: otel-tracing
+  namespace: emissary
+spec:
+  service: "otel-collector-opentelemetry-collector.opentelemetry.svc.cluster.local:4317"
+  driver: opentelemetry
+  config:
+    service_name: emissary-ingress
+  sampling:
+    overall: 100
