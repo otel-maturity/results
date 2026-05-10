@@ -61,7 +61,9 @@ def find_projects(results_dir):
 def find_grid_bounds(html):
     """Return (open_end, close_start) for the card-grid <div>.
 
-    Matches nesting so cards containing <div>...</div> don't trip us up.
+    Matches nesting so cards containing <div>...</div> don't trip us up,
+    and skips over HTML comments so literal `<div ...>` text mentioned
+    inside a comment block doesn't unbalance the depth counter.
     """
     m = GRID_OPEN_RE.search(html)
     if not m:
@@ -73,6 +75,13 @@ def find_grid_bounds(html):
         tm = DIV_TAG_RE.search(html, i)
         if not tm:
             return None
+        comment_pos = html.find("<!--", i, tm.start())
+        if comment_pos != -1:
+            comment_end = html.find("-->", comment_pos + 4)
+            if comment_end == -1:
+                return None
+            i = comment_end + 3
+            continue
         if tm.group(1) == "/":
             depth -= 1
             if depth == 0:
