@@ -1,0 +1,1024 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Istio — OpenTelemetry Maturity Report</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <script>
+        (function () {
+            var theme = 'dark';
+            try {
+                var stored = localStorage.getItem('theme');
+                if (stored === 'light' || stored === 'dark') theme = stored;
+            } catch (e) {}
+            document.documentElement.setAttribute('data-theme', theme);
+        })();
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        /* ── Theme tokens (mirror otel-maturity.io) ────────────────── */
+        :root,
+        :root[data-theme="dark"] {
+            --bg-50: #060912;
+            --bg-100: #101622;
+            --bg-150: #19202d;
+            --border: #232c3a;
+            --border-strong: #38445a;
+            --text-intense: #f5f9ff;
+            --text-default: #9aa6b8;
+            --text-subtle: #67738a;
+            --electric: #0ea5e9;
+            --electric-bright: #38bdf8;
+            --electric-glow: #67e8f9;
+            --green: #62d08d;
+            --amber: #f5b860;
+            --red: #f87171;
+            --surface: #101622;
+            --surface-glass: rgba(29, 32, 41, 0.5);
+            --grid-line: rgba(255, 255, 255, 0.02);
+            --bg-glow-1: rgba(56, 189, 248, 0.14);
+            --bg-glow-2: rgba(14, 165, 233, 0.08);
+            --visual-glow: rgba(56, 189, 248, 0.24);
+            --chart-grid: rgba(255, 255, 255, 0.07);
+            --chart-label: #d0d4d9;
+            --chart-fill: rgba(56, 189, 248, 0.18);
+            --chart-line: #38bdf8;
+            --chart-point-bg: #67e8f9;
+            --chart-point-border: #38bdf8;
+            --underline-soft: rgba(56, 189, 248, 0.4);
+
+            --level-0-bg: rgba(248, 113, 113, 0.12);
+            --level-0-border: rgba(248, 113, 113, 0.35);
+            --level-0-fg: #fca5a5;
+            --level-1-bg: rgba(245, 184, 96, 0.12);
+            --level-1-border: rgba(245, 184, 96, 0.35);
+            --level-1-fg: #fbbf6b;
+            --level-2-bg: rgba(56, 189, 248, 0.12);
+            --level-2-border: rgba(56, 189, 248, 0.35);
+            --level-2-fg: #7dd3fc;
+            --level-3-bg: rgba(98, 208, 141, 0.12);
+            --level-3-border: rgba(98, 208, 141, 0.35);
+            --level-3-fg: #86efac;
+
+            --opp-bg: rgba(245, 184, 96, 0.08);
+            --opp-border: #f5b860;
+            --opp-fg: #fbbf6b;
+            --code-bg: rgba(56, 189, 248, 0.08);
+            --code-fg: #7dd3fc;
+        }
+
+        :root[data-theme="light"] {
+            --bg-50: #f8fafc;
+            --bg-100: #ffffff;
+            --bg-150: #f1f5f9;
+            --border: #e1e6ed;
+            --border-strong: #adb6c2;
+            --text-intense: #0c1322;
+            --text-default: #4a5568;
+            --text-subtle: #6b7589;
+            --electric: #0284c7;
+            --electric-bright: #0ea5e9;
+            --electric-glow: #0891b2;
+            --green: #16a34a;
+            --amber: #c2710c;
+            --red: #dc2626;
+            --surface: #ffffff;
+            --surface-glass: rgba(255, 255, 255, 0.7);
+            --grid-line: rgba(15, 23, 42, 0.04);
+            --bg-glow-1: rgba(56, 189, 248, 0.18);
+            --bg-glow-2: rgba(2, 132, 199, 0.08);
+            --visual-glow: rgba(14, 165, 233, 0.18);
+            --chart-grid: rgba(15, 23, 42, 0.08);
+            --chart-label: #475569;
+            --chart-fill: rgba(14, 165, 233, 0.16);
+            --chart-line: #0284c7;
+            --chart-point-bg: #06b6d4;
+            --chart-point-border: #0284c7;
+            --underline-soft: rgba(2, 132, 199, 0.35);
+
+            --level-0-bg: #fff1f2;
+            --level-0-border: #fda4af;
+            --level-0-fg: #be123c;
+            --level-1-bg: #fff7ed;
+            --level-1-border: #fdba74;
+            --level-1-fg: #b45309;
+            --level-2-bg: #ecfeff;
+            --level-2-border: #67e8f9;
+            --level-2-fg: #0e7490;
+            --level-3-bg: #f0fdf4;
+            --level-3-border: #86efac;
+            --level-3-fg: #166534;
+
+            --opp-bg: #fff7ed;
+            --opp-border: #f59e0b;
+            --opp-fg: #92400e;
+            --code-bg: #ecfeff;
+            --code-fg: #0e7490;
+        }
+
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        html, body { margin: 0; padding: 0; }
+
+        body {
+            font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
+            background: var(--bg-50);
+            color: var(--text-intense);
+            min-height: 100vh;
+            line-height: 1.6;
+            overflow-x: hidden;
+            position: relative;
+            transition: background-color .25s ease, color .25s ease;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        /* ── Ambient background (matches landing page) ─────────────── */
+        .bg {
+            position: fixed; inset: 0; z-index: 0; pointer-events: none;
+            background:
+                radial-gradient(ellipse 50% 60% at 75% 0%, var(--bg-glow-1), transparent 60%),
+                radial-gradient(ellipse 40% 50% at 20% 100%, var(--bg-glow-2), transparent 60%),
+                var(--bg-50);
+        }
+        .grid-overlay {
+            position: fixed; inset: 0; z-index: 0; pointer-events: none;
+            background-image:
+                linear-gradient(to right, var(--grid-line) 1px, transparent 1px),
+                linear-gradient(to bottom, var(--grid-line) 1px, transparent 1px);
+            background-size: 64px 64px;
+            mask-image: radial-gradient(ellipse 90% 80% at 50% 30%, black, transparent 90%);
+        }
+
+        a {
+            color: var(--electric-bright);
+            text-decoration: none;
+            border-bottom: 1px dotted var(--underline-soft);
+            transition: color .15s ease, border-color .15s ease;
+        }
+        a:hover { color: var(--electric-glow); border-bottom-color: var(--electric-glow); }
+
+        /* ── Page scaffolding ──────────────────────────────────────── */
+        .page {
+            position: relative; z-index: 1;
+            padding: 24px clamp(20px, 5vw, 48px) 0;
+        }
+        .topbar {
+            max-width: 1080px; margin: 0 auto;
+            display: flex; align-items: center; justify-content: space-between; gap: 16px;
+        }
+        .topbar-meta {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12px; color: var(--text-subtle);
+        }
+        .theme-toggle {
+            display: inline-flex; align-items: center; justify-content: center;
+            width: 32px; height: 32px;
+            background: var(--surface-glass);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text-default);
+            cursor: pointer;
+            backdrop-filter: blur(8px);
+            transition: color .15s ease, border-color .15s ease, background-color .15s ease;
+        }
+        .theme-toggle:hover { color: var(--text-intense); border-color: var(--border-strong); }
+        .theme-toggle svg { width: 16px; height: 16px; display: block; }
+        .theme-toggle .icon-moon { display: none; }
+        :root[data-theme="light"] .theme-toggle .icon-moon { display: block; }
+        :root[data-theme="light"] .theme-toggle .icon-sun { display: none; }
+
+        /* ── Hero header ───────────────────────────────────────────── */
+        .site-header {
+            position: relative; z-index: 1;
+            padding: 48px clamp(20px, 5vw, 48px) 56px;
+        }
+        .header-inner { max-width: 1080px; margin: 0 auto; }
+        .pill {
+            display: inline-flex; align-items: center; gap: 8px;
+            font-size: 11px; color: var(--text-default);
+            padding: 6px 12px;
+            border: 1px solid var(--border); border-radius: 999px;
+            text-transform: uppercase; letter-spacing: .1em; font-weight: 500;
+            background: var(--surface-glass); backdrop-filter: blur(8px);
+            margin-bottom: 24px;
+        }
+        .pulse { width: 6px; height: 6px; border-radius: 50%; background: var(--green); animation: pulse 2.2s ease-in-out infinite; }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(98, 208, 141, .5); }
+            50% { opacity: .7; box-shadow: 0 0 0 6px rgba(98, 208, 141, 0); }
+        }
+        h1.title {
+            font-size: clamp(34px, 5vw, 52px);
+            font-weight: 600; letter-spacing: -.025em; line-height: 1.05;
+            color: var(--text-intense);
+            margin: 0 0 16px;
+        }
+        h1.title .accent {
+            background: linear-gradient(135deg, var(--electric), var(--electric-glow));
+            -webkit-background-clip: text; background-clip: text; color: transparent;
+        }
+        .subtitle {
+            font-size: clamp(15px, 1.4vw, 17px);
+            color: var(--text-default); line-height: 1.6;
+            max-width: 640px;
+            margin: 0 0 28px;
+        }
+        .header-meta {
+            display: flex; flex-wrap: wrap; gap: 20px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12px; color: var(--text-subtle);
+        }
+        .header-meta span { display: inline-flex; align-items: center; gap: 6px; }
+        .header-meta strong { color: var(--text-default); font-weight: 500; }
+        .header-meta .label { color: var(--text-subtle); text-transform: uppercase; letter-spacing: .08em; font-size: 10px; }
+
+        /* ── Layout ────────────────────────────────────────────────── */
+        .container {
+            position: relative; z-index: 1;
+            max-width: 1080px; margin: 0 auto;
+            padding: 16px clamp(20px, 5vw, 48px) 40px;
+        }
+
+        /* ── Section title ─────────────────────────────────────────── */
+        .section-title {
+            font-size: 11px; font-weight: 600;
+            color: var(--text-subtle); text-transform: uppercase;
+            letter-spacing: .12em;
+            padding-bottom: 12px;
+            margin-bottom: 20px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        /* ── Surface cards (glass) ─────────────────────────────────── */
+        .card {
+            background: var(--surface-glass);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            backdrop-filter: blur(12px);
+            padding: 28px;
+            margin-bottom: 24px;
+        }
+
+        /* ── Radar chart ───────────────────────────────────────────── */
+        .chart-wrap {
+            position: relative;
+            display: flex; justify-content: center; align-items: center;
+            padding: 8px 0 16px;
+        }
+        .chart-wrap::before {
+            content: ""; position: absolute; inset: 0;
+            background: radial-gradient(ellipse 55% 55% at 50% 50%, var(--visual-glow), transparent 70%);
+            filter: blur(40px); pointer-events: none; z-index: 0;
+        }
+        .chart-wrap canvas { position: relative; z-index: 1; max-width: 480px; max-height: 480px; }
+
+        .score-legend {
+            display: flex; justify-content: center; gap: 24px; flex-wrap: wrap;
+            margin-top: 8px; font-size: 12px; color: var(--text-default);
+        }
+        .score-legend-item { display: inline-flex; align-items: center; gap: 8px; }
+        .score-legend-dot { width: 10px; height: 10px; border-radius: 50%; }
+
+        /* ── Summary table ─────────────────────────────────────────── */
+        .summary-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+        .summary-table th {
+            text-align: left; padding: 12px 14px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px; font-weight: 500;
+            text-transform: uppercase; letter-spacing: .08em;
+            color: var(--text-subtle);
+            border-bottom: 1px solid var(--border);
+        }
+        .summary-table td {
+            padding: 14px;
+            color: var(--text-default);
+            border-bottom: 1px solid var(--border);
+            vertical-align: top;
+        }
+        .summary-table td strong { color: var(--text-intense); font-weight: 600; }
+        .summary-table tr:last-child td { border-bottom: none; }
+        .summary-table tr:hover td { background: rgba(255, 255, 255, 0.02); }
+        :root[data-theme="light"] .summary-table tr:hover td { background: rgba(15, 23, 42, 0.025); }
+
+        /* ── Level badges (semantic palette) ───────────────────────── */
+        .level-badge {
+            display: inline-block; padding: 3px 10px; border-radius: 999px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px; font-weight: 500; white-space: nowrap;
+            border: 1px solid transparent;
+        }
+        .level-0 { background: var(--level-0-bg); color: var(--level-0-fg); border-color: var(--level-0-border); }
+        .level-1 { background: var(--level-1-bg); color: var(--level-1-fg); border-color: var(--level-1-border); }
+        .level-2 { background: var(--level-2-bg); color: var(--level-2-fg); border-color: var(--level-2-border); }
+        .level-3 { background: var(--level-3-bg); color: var(--level-3-fg); border-color: var(--level-3-border); }
+
+        /* ── Signal cards ──────────────────────────────────────────── */
+        .signals-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+        .signal-card {
+            border-radius: 12px;
+            padding: 20px;
+            text-align: center;
+            border: 1px solid var(--border);
+            background: var(--bg-100);
+            transition: border-color .15s ease, transform .15s ease;
+        }
+        .signal-card.flowing { border-color: var(--level-3-border); background: var(--level-3-bg); }
+        .signal-card.partial { border-color: var(--level-1-border); background: var(--level-1-bg); }
+        .signal-card.not-flowing { border-color: var(--level-0-border); background: var(--level-0-bg); }
+        .signal-icon { font-size: 1.8rem; margin-bottom: 8px; }
+        .signal-name {
+            font-size: 14px; font-weight: 600;
+            color: var(--text-intense);
+            margin-bottom: 6px;
+        }
+        .signal-status {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px; font-weight: 500;
+            text-transform: uppercase; letter-spacing: .06em;
+        }
+        .signal-card.flowing .signal-status { color: var(--level-3-fg); }
+        .signal-card.partial .signal-status { color: var(--level-1-fg); }
+        .signal-card.not-flowing .signal-status { color: var(--level-0-fg); }
+        .signal-detail { font-size: 12px; color: var(--text-default); margin-top: 8px; }
+
+        /* ── Dimension sections (collapsibles) ─────────────────────── */
+        .dimension-section { margin-bottom: 12px; }
+        details {
+            border-radius: 12px;
+            border: 1px solid var(--border);
+            background: var(--surface-glass);
+            backdrop-filter: blur(12px);
+            overflow: hidden;
+            transition: border-color .15s ease;
+        }
+        details[open] { border-color: var(--border-strong); }
+        summary {
+            display: flex; align-items: center; gap: 14px;
+            padding: 16px 20px; cursor: pointer;
+            list-style: none; user-select: none;
+            transition: background .15s ease;
+        }
+        summary:hover { background: rgba(255, 255, 255, 0.02); }
+        :root[data-theme="light"] summary:hover { background: rgba(15, 23, 42, 0.025); }
+        summary::-webkit-details-marker { display: none; }
+        .dim-title { font-weight: 600; font-size: 15px; color: var(--text-intense); flex: 1; }
+        .dim-summary { font-size: 13px; color: var(--text-default); }
+        .summary-arrow {
+            margin-left: auto; color: var(--text-subtle);
+            transition: transform .2s ease;
+            font-size: 11px;
+        }
+        details[open] .summary-arrow { transform: rotate(90deg); color: var(--electric-bright); }
+
+        .dim-content {
+            padding: 20px 24px 24px;
+            border-top: 1px solid var(--border);
+            background: var(--bg-100);
+        }
+        .dim-content h4 {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px; font-weight: 500;
+            text-transform: uppercase; letter-spacing: .1em;
+            color: var(--text-subtle);
+            margin: 18px 0 10px;
+        }
+        .dim-content h4:first-child { margin-top: 0; }
+        .dim-content p { font-size: 14px; color: var(--text-default); margin-bottom: 8px; }
+        .dim-content ul { padding-left: 20px; }
+        .dim-content li { font-size: 14px; color: var(--text-default); margin-bottom: 6px; }
+        code {
+            background: var(--code-bg); color: var(--code-fg);
+            padding: 1px 6px; border-radius: 4px;
+            font-family: 'JetBrains Mono', monospace; font-size: 12px;
+        }
+
+        .checklist { list-style: none; padding: 0; }
+        .checklist li {
+            display: flex; gap: 10px; align-items: flex-start;
+            font-size: 13px; padding: 4px 0;
+            color: var(--text-default);
+        }
+        .check-pass { color: var(--green); font-weight: 600; flex-shrink: 0; }
+        .check-fail { color: var(--red); font-weight: 600; flex-shrink: 0; }
+
+        .opportunity-box {
+            background: var(--opp-bg);
+            border-left: 3px solid var(--opp-border);
+            padding: 12px 16px;
+            border-radius: 0 8px 8px 0;
+            margin: 10px 0;
+            font-size: 13px;
+            color: var(--opp-fg);
+        }
+        .opportunity-box strong { color: var(--opp-fg); }
+
+        /* ── Key takeaways ─────────────────────────────────────────── */
+        .takeaways-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+        .takeaway-box {
+            border-radius: 12px;
+            padding: 20px 22px;
+            border: 1px solid;
+        }
+        .takeaway-box.strengths { background: var(--level-3-bg); border-color: var(--level-3-border); }
+        .takeaway-box.improvements { background: var(--level-1-bg); border-color: var(--level-1-border); }
+        .takeaway-box.observations { background: var(--level-2-bg); border-color: var(--level-2-border); }
+        .takeaway-box h3 {
+            font-size: 13px; font-weight: 600;
+            text-transform: uppercase; letter-spacing: .08em;
+            margin-bottom: 12px;
+        }
+        .takeaway-box.strengths h3 { color: var(--level-3-fg); }
+        .takeaway-box.improvements h3 { color: var(--level-1-fg); }
+        .takeaway-box.observations h3 { color: var(--level-2-fg); }
+        .takeaway-box ul { padding-left: 18px; }
+        .takeaway-box li {
+            font-size: 13px; margin-bottom: 8px; color: var(--text-default);
+        }
+        .takeaway-box li strong { color: var(--text-intense); font-weight: 600; }
+
+        /* ── Footer ────────────────────────────────────────────────── */
+        .site-footer {
+            position: relative; z-index: 1;
+            border-top: 1px solid var(--border);
+            padding: 24px clamp(20px, 5vw, 48px) 32px;
+            margin-top: 40px;
+        }
+        .footer-inner {
+            max-width: 1080px; margin: 0 auto;
+            display: flex; flex-wrap: wrap; gap: 16px;
+            align-items: center; justify-content: space-between;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px; color: var(--text-subtle);
+        }
+        .footer-inner a { color: var(--electric-bright); }
+        .corner-flow { display: inline-flex; gap: 6px; align-items: center; opacity: .85; }
+        .corner-flow .node { width: 6px; height: 6px; border-radius: 50%; }
+        .corner-flow .line { width: 14px; height: 1px; background: var(--border-strong); }
+
+        /* ── Responsive ────────────────────────────────────────────── */
+        @media (max-width: 700px) {
+            .signals-grid { grid-template-columns: 1fr; }
+            .takeaways-grid { grid-template-columns: 1fr; }
+            .header-meta { gap: 12px; }
+            summary { flex-wrap: wrap; }
+            .dim-summary { width: 100%; padding-left: 36px; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="bg"></div>
+<div class="grid-overlay"></div>
+
+<!-- ═══════════════════════════════════════════════════════ TOP BAR -->
+<div class="page">
+    <header class="topbar">
+        <span class="topbar-meta">otel-maturity · report</span>
+        <button id="theme-toggle" class="theme-toggle" type="button" aria-label="Toggle light and dark theme">
+            <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <circle cx="12" cy="12" r="4"></circle>
+                <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"></path>
+            </svg>
+            <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+            </svg>
+        </button>
+    </header>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ HEADER -->
+<!--
+  TEMPLATE VARIABLES (replace all {{...}} placeholders before use):
+    Istio        — e.g. "Tekton Pipelines"
+    CNCF Graduated Project   — e.g. "CNCF Graduated Project"
+    1.29.2     — e.g. "v1.11.1"
+    2026-05-10           — e.g. "2026-05-01"
+    https://github.com/istio/istio    — e.g. "https://github.com/tektoncd/pipeline"
+    github.com/istio/istio  — e.g. "github.com/tektoncd/pipeline"
+    Telemetry collected in kind cluster (otel-eval-istio) running Istio 1.29.2 with OTel Collector v0.150.1 file exporter · evaluate-otel-maturity v0.0.2 · generate-otel-report v0.0.6          — e.g. "Telemetry collected in kind cluster with OTel Collector file exporter"
+    evaluate-otel-maturity v0.0.2       — e.g. "evaluate-otel-maturity v0.0.2"
+
+  DIMENSION SCORES (0–3 per dimension):
+    2   — Integration Surface
+    1       — Semantic Conventions
+    2      — Resource Attributes & Configuration
+    3         — Trace Modeling & Context Propagation
+    1   — Multi-Signal Observability
+    2       — Audience & Signal Quality
+    1     — Stability & Change Management
+-->
+<header class="site-header">
+    <div class="header-inner">
+        <div class="pill">
+            <span class="pulse"></span>
+            <span>CNCF Graduated Project</span>
+        </div>
+        <h1 class="title">Istio <span class="accent">maturity report.</span></h1>
+        <p class="subtitle">
+            A dimension-by-dimension look at how Istio supports OpenTelemetry,
+            evaluated against the draft OTel Support Maturity Model.
+        </p>
+        <div class="header-meta">
+            <span><span class="label">Version</span><strong>1.29.2</strong></span>
+            <span><span class="label">Evaluated</span><strong>2026-05-10</strong></span>
+            <span><span class="label">Model</span><strong>OTel Support Maturity (draft)</strong></span>
+            <span><span class="label">Skill</span><strong>evaluate-otel-maturity v0.0.2</strong></span>
+        </div>
+    </div>
+</header>
+
+<div class="container">
+
+    <!-- ═══════════════════════════════════════════════════ RADAR CHART -->
+    <div class="card">
+        <div class="section-title">Maturity overview</div>
+        <div class="chart-wrap">
+            <canvas id="radarChart"></canvas>
+        </div>
+        <div class="score-legend">
+            <div class="score-legend-item"><div class="score-legend-dot" style="background: var(--level-0-fg)"></div> 0 — Instrumented</div>
+            <div class="score-legend-item"><div class="score-legend-dot" style="background: var(--level-1-fg)"></div> 1 — OTel-Aligned</div>
+            <div class="score-legend-item"><div class="score-legend-dot" style="background: var(--level-2-fg)"></div> 2 — OTel-Native</div>
+            <div class="score-legend-item"><div class="score-legend-dot" style="background: var(--level-3-fg)"></div> 3 — OTel-Optimized</div>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════ SUMMARY TABLE -->
+    <div class="card">
+        <div class="section-title">Dimension scores</div>
+        <table class="summary-table">
+            <thead>
+            <tr>
+                <th>Dimension</th>
+                <th>Level</th>
+                <th>Summary</th>
+            </tr>
+            </thead>
+            <tbody>
+            <!--
+              For each row, set the level-badge class to match the score:
+                level-0 → "0 — Instrumented"
+                level-1 → "1 — OTel-Aligned"
+                level-2 → "2 — OTel-Native"
+                level-3 → "3 — OTel-Optimized"
+              Replace {{SUMMARY_*}} with a one-line description of findings.
+            -->
+            <tr>
+                <td><strong>Integration Surface</strong></td>
+                <td><span class="level-badge level-2">2 — OTel-Native</span></td>
+                <td>OTLP gRPC traces are first-class; metrics are Prometheus-only with no OTLP path; logs are stdout-only</td>
+            </tr>
+            <tr>
+                <td><strong>Semantic Conventions</strong></td>
+                <td><span class="level-badge level-1">1 — OTel-Aligned</span></td>
+                <td>Envoy spans use deprecated HTTP semconv (http.method, http.status_code, http.url, http.target); Istio-specific attributes are non-standard</td>
+            </tr>
+            <tr>
+                <td><strong>Resource Attributes &amp; Configuration</strong></td>
+                <td><span class="level-badge level-2">2 — OTel-Native</span></td>
+                <td>Envoy natively emits service.name + telemetry.sdk.* via OTLP; no service.version; not configurable via OTEL_* env vars</td>
+            </tr>
+            <tr>
+                <td><strong>Trace Modeling &amp; Context Propagation</strong></td>
+                <td><span class="level-badge level-3">3 — OTel-Optimized</span></td>
+                <td>Full W3C traceparent propagation confirmed; correct span kinds; coherent multi-hop traces across gateway and sidecar</td>
+            </tr>
+            <tr>
+                <td><strong>Multi-Signal Observability</strong></td>
+                <td><span class="level-badge level-1">1 — OTel-Aligned</span></td>
+                <td>Only traces use OTLP; metrics require Prometheus scrape; logs are stdout with no trace context; no cross-signal correlation</td>
+            </tr>
+            <tr>
+                <td><strong>Audience &amp; Signal Quality</strong></td>
+                <td><span class="level-badge level-2">2 — OTel-Native</span></td>
+                <td>Trace span names are operator-legible Envoy routing strings; rich Istio metadata; high-value control plane metrics via Prometheus</td>
+            </tr>
+            <tr>
+                <td><strong>Stability &amp; Change Management</strong></td>
+                <td><span class="level-badge level-1">1 — OTel-Aligned</span></td>
+                <td>No schemaUrl on Envoy OTLP traces; Prometheus metrics have no schema URL; telemetry behavior documented but not as a formal contract</td>
+            </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════ SIGNALS -->
+    <!--
+      Each signal card takes one of three CSS classes:
+        flowing      → green  (signal confirmed working end-to-end)
+        partial      → amber  (signal exists but incomplete / partially configured)
+        not-flowing  → red    (signal absent or not exported via OTel)
+    -->
+    <div class="card">
+        <div class="section-title">Signal status</div>
+        <div class="signals-grid">
+
+            <div class="signal-card flowing">
+                <div class="signal-icon">🔍</div>
+                <div class="signal-name">Traces</div>
+                <div class="signal-status">✓ OTLP gRPC</div>
+                <div class="signal-detail">905 spans · 405 traces · Envoy → Collector port 4317</div>
+            </div>
+
+            <div class="signal-card partial">
+                <div class="signal-icon">📊</div>
+                <div class="signal-name">Metrics</div>
+                <div class="signal-status">⚠ Prometheus Scrape</div>
+                <div class="signal-detail">352 unique metric names · ports 15014/15020/15090 · no OTLP path</div>
+            </div>
+
+            <div class="signal-card not-flowing">
+                <div class="signal-icon">📋</div>
+                <div class="signal-name">Logs</div>
+                <div class="signal-status">✗ stdout JSON only</div>
+                <div class="signal-detail">Access logs to /dev/stdout · no traceId/spanId fields · 0 OTLP records</div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════ DIMENSIONS -->
+    <div class="section-title" style="margin-top: 32px;">Dimension details</div>
+
+    <!-- 1. Integration Surface -->
+    <div class="dimension-section">
+        <details open>
+            <summary>
+                <span class="level-badge level-2">2</span>
+                <span class="dim-title">Integration Surface</span>
+                <span class="dim-summary">OTLP gRPC traces are first-class; metrics are Prometheus-only with no OTLP path; logs are stdout-only</span>
+                <span class="summary-arrow">▶</span>
+            </summary>
+            <div class="dim-content">
+                <h4>What we observed</h4>
+                <p>Istio 1.29.2 supports native OTLP gRPC trace export via <code>meshConfig.extensionProviders</code> with an <code>opentelemetry</code> provider type, activated per-namespace with a <code>Telemetry</code> CR (<code>telemetry.istio.io/v1</code>). Envoy sidecars and the ingress gateway push spans directly to the collector's OTLP gRPC endpoint (port 4317). 905 spans were confirmed flowing across 405 traces. Metrics, however, are Prometheus-only — scraped from ports <code>15014</code> (istiod), <code>15020</code>, and <code>15090</code> (sidecars). No OTLP metrics provider exists in the extension system as of Istio 1.29. Access logs are written to <code>/dev/stdout</code> in JSON format with no OTLP transport.</p>
+
+                <h4>What's working well</h4>
+                <ul>
+                    <li>OTLP gRPC trace export is a first-class, production-supported integration since Istio 1.13, with a clean Kubernetes-native configuration API via the stable <code>Telemetry</code> CR (v1) and <code>meshConfig.extensionProviders</code>.</li>
+                    <li>Sampling is configurable per-namespace via <code>randomSamplingPercentage</code> in the <code>Telemetry</code> CR, and the OTLP endpoint (service + port) is fully configurable in <code>meshConfig</code>.</li>
+                </ul>
+
+                <h4>Opportunities</h4>
+                <div class="opportunity-box">
+                    <strong>Add OTLP metrics export</strong> — Adding an OTLP metrics provider to <code>meshConfig.extensionProviders</code> (similar to the existing trace provider) would enable a unified collection model and eliminate the need to run separate Prometheus scrapers alongside OTLP receivers.
+                </div>
+                <div class="opportunity-box">
+                    <strong>Enable OTLP log export</strong> — Istio's extension provider system supports an <code>envoyFileAccessLog</code> type with OTel formatting. Configuring an OTLP log provider would complete the three-signal picture and enable trace-log correlation via <code>traceId</code> and <code>spanId</code> fields in access logs.
+                </div>
+
+                <h4>Checklist</h4>
+                <ul class="checklist">
+                    <li><span class="check-pass">✓</span> OTLP supported for traces (gRPC, port 4317) — 905 spans confirmed flowing</li>
+                    <li><span class="check-pass">✓</span> OTLP endpoint is configurable (service + port in <code>meshConfig.extensionProviders</code>)</li>
+                    <li><span class="check-fail">✗</span> OTLP not available for metrics (Prometheus scrape only)</li>
+                    <li><span class="check-fail">✗</span> OTLP not available for logs (stdout JSON only, no <code>traceId</code>/<code>spanId</code>)</li>
+                </ul>
+            </div>
+        </details>
+    </div>
+
+    <!-- 2. Semantic Conventions -->
+    <div class="dimension-section">
+        <details>
+            <summary>
+                <span class="level-badge level-1">1</span>
+                <span class="dim-title">Semantic Conventions</span>
+                <span class="dim-summary">Envoy spans use deprecated HTTP semconv (http.method, http.status_code, http.url, http.target); Istio-specific attributes are non-standard</span>
+                <span class="summary-arrow">▶</span>
+            </summary>
+            <div class="dim-content">
+                <h4>What we observed</h4>
+                <p>All Envoy-generated spans use deprecated OpenTelemetry HTTP semantic conventions. Attributes like <code>http.method</code>, <code>http.status_code</code>, <code>http.url</code>, <code>http.target</code>, <code>http.flavor</code>, <code>net.host.ip</code>, and <code>net.peer.ip</code> are present — all deprecated in favor of stable equivalents such as <code>http.request.method</code>, <code>http.response.status_code</code>, <code>url.path</code>, and <code>network.peer.address</code>. This is an upstream Envoy OTel tracer constraint (Envoy 1.37.2-dev). Additionally, Istio adds its own non-standard span attributes: <code>istio.mesh_id</code>, <code>istio.cluster_id</code>, <code>istio.canonical_service</code>, <code>istio.canonical_revision</code>, <code>node_id</code>, <code>upstream_cluster</code>, and <code>response_flags</code> — valuable mesh context, but not mapped to any OTel semconv equivalents. Metric names follow Prometheus conventions (<code>snake_case</code>, <code>_total</code> suffixes) with no OTel metric naming conventions used.</p>
+
+                <h4>What's working well</h4>
+                <ul>
+                    <li><code>telemetry.sdk.name</code> (<code>envoy</code>), <code>telemetry.sdk.language</code> (<code>cpp</code>), and <code>telemetry.sdk.version</code> are correctly set on all OTLP trace resources, identifying the instrumentation source.</li>
+                    <li>Istio-specific attributes like <code>istio.canonical_service</code>, <code>istio.namespace</code>, <code>istio.mesh_id</code>, and <code>response_flags</code> provide rich mesh-level context that is genuinely useful for operators debugging traffic issues.</li>
+                </ul>
+
+                <h4>Opportunities</h4>
+                <div class="opportunity-box">
+                    <strong>Migrate Envoy OTel tracer to current HTTP semconv</strong> — Upstream Envoy's OTel tracer currently emits deprecated attributes (<code>http.method</code> → should be <code>http.request.method</code>, <code>http.status_code</code> → <code>http.response.status_code</code>, <code>net.peer.ip</code> → <code>network.peer.address</code>, etc.). Tracking and communicating the upstream Envoy migration timeline would help Istio users plan for the transition.
+                </div>
+                <div class="opportunity-box">
+                    <strong>Map Istio-specific attributes to OTel semconv equivalents</strong> — Attributes like <code>istio.namespace</code> could map to <code>k8s.namespace.name</code>, and <code>upstream_cluster</code> context could align with <code>peer.service</code>. Publishing a mapping table between Istio-specific attributes and their nearest OTel semconv equivalents would improve backend portability.
+                </div>
+            </div>
+        </details>
+    </div>
+
+    <!-- 3. Resource Attributes & Configuration -->
+    <div class="dimension-section">
+        <details>
+            <summary>
+                <span class="level-badge level-2">2</span>
+                <span class="dim-title">Resource Attributes &amp; Configuration</span>
+                <span class="dim-summary">Envoy natively emits service.name + telemetry.sdk.* via OTLP; no service.version; not configurable via OTEL_* env vars</span>
+                <span class="summary-arrow">▶</span>
+            </summary>
+            <div class="dim-content">
+                <h4>What we observed</h4>
+                <p>Envoy's OTLP exporter natively emits a minimal but consistent resource attribute set: <code>service.name</code> (formatted as <code>&lt;canonical_service&gt;.&lt;namespace&gt;</code>, e.g., <code>istio-ingressgateway.istio-ingress</code> and <code>otel-eval-backend.demo</code>), <code>telemetry.sdk.name</code> (<code>envoy</code>), <code>telemetry.sdk.language</code> (<code>cpp</code>), and <code>telemetry.sdk.version</code>. Notably absent natively are <code>service.version</code>, <code>service.namespace</code> (embedded in the service name instead), <code>service.instance.id</code>, and <code>host.name</code>. Istio/Envoy does not support <code>OTEL_*</code> standard environment variables — configuration is exclusively via <code>meshConfig.extensionProviders</code> and the <code>Telemetry</code> CR. The <code>service.name</code> format differs between traces (<code>otel-eval-backend.demo</code>) and metrics (collector job name <code>istio-envoy-demo</code>), preventing cross-signal identity correlation.</p>
+
+                <h4>What's working well</h4>
+                <ul>
+                    <li><code>service.name</code> is consistently set on all OTLP trace spans, derived from the pod's <code>service.istio.io/canonical-name</code> label, providing stable workload identity across all spans for the same workload.</li>
+                    <li>The <code>telemetry.sdk.*</code> attributes correctly identify the instrumentation (<code>envoy</code>, <code>cpp</code>), enabling backends to distinguish Envoy-generated spans from application-generated spans.</li>
+                </ul>
+
+                <h4>Opportunities</h4>
+                <div class="opportunity-box">
+                    <strong>Emit service.version and service.namespace as separate attributes</strong> — Currently <code>service.name</code> embeds the namespace (<code>otel-eval-backend.demo</code>), deviating from the OTel standard where <code>service.namespace</code> is a separate attribute. Adding <code>service.namespace</code> and <code>service.version</code> (from the pod's <code>app.kubernetes.io/version</code> label) would improve backend compatibility.
+                </div>
+                <div class="opportunity-box">
+                    <strong>Align service.name format between traces and metrics</strong> — Trace spans use <code>service.name=otel-eval-backend.demo</code> while metrics arrive with collector-assigned job names like <code>istio-envoy-demo</code>. Aligning these identities — either by standardizing the <code>service.name</code> format or by using a shared label in the Prometheus scrape configuration — would enable cross-signal correlation without custom pipeline transforms.
+                </div>
+            </div>
+        </details>
+    </div>
+
+    <!-- 4. Trace Modeling & Context Propagation -->
+    <div class="dimension-section">
+        <details>
+            <summary>
+                <span class="level-badge level-3">3</span>
+                <span class="dim-title">Trace Modeling &amp; Context Propagation</span>
+                <span class="dim-summary">Full W3C traceparent propagation confirmed; correct span kinds; coherent multi-hop traces across gateway and sidecar</span>
+                <span class="summary-arrow">▶</span>
+            </summary>
+            <div class="dim-content">
+                <h4>What we observed</h4>
+                <p>Istio/Envoy's trace modeling is excellent. Each request generates a coherent 3-layer trace: the ingress gateway emits a root <code>SERVER</code> span followed by a <code>CLIENT</code> egress span, which parents the sidecar's <code>SERVER</code> span, which in turn parents application-level spans. W3C Trace Context (<code>traceparent</code>) propagation was confirmed end-to-end — a test request injected with <code>traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01</code> was found with the same <code>traceId</code> across ingress gateway spans, sidecar spans, and application spans. Span names follow the pattern <code>&lt;upstream_fqdn&gt;:&lt;port&gt;/*</code> for SERVER spans and <code>router &lt;cluster&gt;; egress</code> for CLIENT spans.</p>
+
+                <h4>What's working well</h4>
+                <ul>
+                    <li>Full W3C <code>traceparent</code> propagation is honored — externally-injected trace IDs are preserved end-to-end through gateway and sidecar boundaries, enabling integration with upstream tracing systems.</li>
+                    <li>Span kinds are semantically correct (<code>SERVER</code> for inbound, <code>CLIENT</code> for outbound routing), and parent-child relationships accurately model the request path: gateway SERVER → gateway CLIENT → sidecar SERVER → app spans.</li>
+                </ul>
+
+                <h4>Opportunities</h4>
+                <div class="opportunity-box">
+                    <strong>Document application header forwarding requirement</strong> — For cross-service trace continuity, applications must forward incoming <code>traceparent</code> (and <code>b3</code>) headers to outgoing requests — Envoy does not do this automatically. This is a known Istio limitation documented in the observability guide, but more prominent guidance at the SDK/framework level would reduce operator confusion.
+                </div>
+                <div class="opportunity-box">
+                    <strong>Filter low-value infrastructure spans</strong> — Spans for internal health checks (<code>GET /health</code>), metadata service egress (<code>egress 169.254.169.254</code>), and cloud metadata endpoints (<code>egress 100.100.100.200</code>) add noise to traces. Providing sampling filter recommendations in the <code>Telemetry</code> CR documentation would help operators reduce noise without losing signal.
+                </div>
+            </div>
+        </details>
+    </div>
+
+    <!-- 5. Multi-Signal Observability -->
+    <div class="dimension-section">
+        <details>
+            <summary>
+                <span class="level-badge level-1">1</span>
+                <span class="dim-title">Multi-Signal Observability</span>
+                <span class="dim-summary">Only traces use OTLP; metrics require Prometheus scrape; logs are stdout with no trace context; no cross-signal correlation</span>
+                <span class="summary-arrow">▶</span>
+            </summary>
+            <div class="dim-content">
+                <h4>What we observed</h4>
+                <p>Only traces use OTLP as the transport. Metrics require a separate Prometheus scrape pipeline (ports <code>15014</code>, <code>15020</code>, <code>15090</code>), and access logs are written to <code>/dev/stdout</code> in JSON with no OTLP transport. Cross-signal correlation is not possible out of the box: access logs contain <code>request_id</code> (an Envoy UUID) but no <code>traceId</code> or <code>spanId</code>; metrics use Prometheus labels (<code>pod</code>, <code>namespace</code>, <code>app</code>) while traces use <code>service.name</code> in a different format. The collection model requires operators to run two separate pipelines — an OTLP receiver for traces and a Prometheus receiver for metrics — with no unified OTLP path for Istio telemetry.</p>
+
+                <h4>What's working well</h4>
+                <ul>
+                    <li>Traces are fully OTLP-native (gRPC push), providing a solid foundation for the highest-value observability signal in a service mesh — distributed request tracing across gateway and sidecar boundaries.</li>
+                    <li>The Prometheus metrics surface is extensive (352 unique metric names) and well-established in the ecosystem, with broad tooling support via Grafana, Prometheus Operator, and existing dashboards.</li>
+                </ul>
+
+                <h4>Opportunities</h4>
+                <div class="opportunity-box">
+                    <strong>Add traceId/spanId to access logs for trace-log correlation</strong> — Envoy's access log formatter supports <code>%TRACEID%</code> and <code>%REQ(X-B3-TRACEID)%</code> fields. Including <code>traceId</code> and <code>spanId</code> in the JSON access log format would enable correlation between access log entries and distributed traces, significantly improving debugging workflows.
+                </div>
+                <div class="opportunity-box">
+                    <strong>Introduce OTLP metrics export to unify the collection pipeline</strong> — A single OTLP pipeline for all three signals would eliminate the split collection model, enable consistent <code>service.name</code> across traces and metrics, and simplify operator configuration. This is the highest-impact improvement for multi-signal observability in Istio.
+                </div>
+            </div>
+        </details>
+    </div>
+
+    <!-- 6. Audience & Signal Quality -->
+    <div class="dimension-section">
+        <details>
+            <summary>
+                <span class="level-badge level-2">2</span>
+                <span class="dim-title">Audience &amp; Signal Quality</span>
+                <span class="dim-summary">Trace span names are operator-legible Envoy routing strings; rich Istio metadata; high-value control plane metrics via Prometheus</span>
+                <span class="summary-arrow">▶</span>
+            </summary>
+            <div class="dim-content">
+                <h4>What we observed</h4>
+                <p>Envoy span names follow the pattern <code>&lt;upstream_fqdn&gt;:&lt;port&gt;/*</code> for SERVER spans (e.g., <code>otel-eval-backend.demo.svc.cluster.local:3000/*</code>) and <code>router outbound|3000||&lt;fqdn&gt;; egress</code> for CLIENT spans — verbose but interpretable by Kubernetes operators. The 905 spans include some noise: internal health check spans (<code>GET /health</code>), Node.js filesystem spans (<code>fs realpathSync</code>, <code>fs readFileSync</code>), and low-value infrastructure spans (<code>egress 169.254.169.254</code>). The 352 unique Prometheus metric names include high-value control plane metrics (<code>pilot_*</code>, <code>citadel_*</code>) alongside a large volume of raw <code>envoy_*</code> internals. Notably, the standard Istio L7 traffic metrics (<code>istio_requests_total</code>, <code>istio_request_duration_milliseconds</code>) were not observed in the collected data.</p>
+
+                <h4>What's working well</h4>
+                <ul>
+                    <li>Trace span names describe routing context meaningfully — <code>otel-eval-backend.demo.svc.cluster.local:3000/*</code> and <code>router outbound|3000||...; egress</code> are directly useful for operators debugging mesh traffic issues.</li>
+                    <li>Istio-specific span attributes (<code>istio.canonical_service</code>, <code>istio.namespace</code>, <code>istio.mesh_id</code>, <code>response_flags</code>, <code>upstream_cluster</code>, <code>guid:x-request-id</code>) provide valuable mesh context beyond standard HTTP attributes, enabling correlation with Envoy access logs via <code>request_id</code>.</li>
+                </ul>
+
+                <h4>Opportunities</h4>
+                <div class="opportunity-box">
+                    <strong>Ensure istio_requests_total L7 metrics are flowing</strong> — The standard Istio L7 traffic metrics (<code>istio_requests_total</code>, <code>istio_request_duration_milliseconds</code>) — the primary SLI metrics for mesh traffic — were absent from collected data. These require the Envoy stats filter (Telemetry v2 WASM plugin) to be properly configured. Ensuring these metrics are reliably emitted is the highest-priority quality improvement for the metrics signal.
+                </div>
+                <div class="opportunity-box">
+                    <strong>Reduce raw Envoy stats noise in metrics output</strong> — The 352 unique metric names include a large volume of raw <code>envoy_cluster_*</code> and <code>istio_agent_*</code> Go runtime metrics that most operators won't need. Providing a recommended metric allowlist or a curated "essential metrics" profile would improve the signal-to-noise ratio for new adopters.
+                </div>
+            </div>
+        </details>
+    </div>
+
+    <!-- 7. Stability & Change Management -->
+    <div class="dimension-section">
+        <details>
+            <summary>
+                <span class="level-badge level-1">1</span>
+                <span class="dim-title">Stability &amp; Change Management</span>
+                <span class="dim-summary">No schemaUrl on Envoy OTLP traces; Prometheus metrics have no schema URL; telemetry behavior documented but not as a formal contract</span>
+                <span class="summary-arrow">▶</span>
+            </summary>
+            <div class="dim-content">
+                <h4>What we observed</h4>
+                <p>Istio has documentation for tracing, metrics, and access logs, and the <code>Telemetry</code> CR API (<code>telemetry.istio.io/v1</code>) was promoted to stable (v1) in Istio 1.23. However, the telemetry output itself (span attributes, metric names, metric labels) has no schema versioning — no <code>schemaUrl</code> is set on Envoy OTLP trace exports at either the resource or scope level, and Prometheus-scraped metrics carry no <code>schemaUrl</code>. The telemetry output format is subject to change with Envoy version upgrades, and breaking changes can occur without explicit versioned notice. The deprecated HTTP semconv attributes currently in use are a concrete example of a known migration that has not yet occurred.</p>
+
+                <h4>What's working well</h4>
+                <ul>
+                    <li>The <code>Telemetry</code> CR configuration API (<code>telemetry.istio.io/v1</code>) is stable, providing a reliable and versioned configuration surface for operators to configure tracing, metrics, and logging behavior.</li>
+                    <li>Telemetry changes are communicated in Istio release notes (e.g., 1.29 release notes), and the documentation covers tracing, metrics, and access log configuration at <code>istio.io/latest/docs/tasks/observability/</code>.</li>
+                </ul>
+
+                <h4>Opportunities</h4>
+                <div class="opportunity-box">
+                    <strong>Set schemaUrl on Envoy OTLP trace exports</strong> — Adding a <code>schemaUrl</code> (e.g., <code>https://opentelemetry.io/schemas/1.18.0</code>) to Envoy's OTLP resource and scope exports would enable observability backends and the OTel Collector's transform processor to understand which semconv version is in use, and would signal to users when the deprecated attributes will be migrated.
+                </div>
+                <div class="opportunity-box">
+                    <strong>Publish a telemetry stability contract separate from the configuration API</strong> — The <code>Telemetry</code> CR API is stable, but the telemetry output (span attributes, metric names, label cardinality) is not versioned independently. Documenting which attributes and metric names are considered stable output vs. implementation details — and communicating breaking changes with advance notice — would significantly improve the operator experience across Envoy version upgrades.
+                </div>
+            </div>
+        </details>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════ KEY TAKEAWAYS -->
+    <div class="card" style="margin-top: 32px;">
+        <div class="section-title">Key takeaways</div>
+        <div class="takeaways-grid">
+            <div class="takeaway-box strengths">
+                <h3>● Strengths</h3>
+                <ul>
+                    <li><strong>W3C Trace Context propagation</strong> — Istio/Envoy correctly honors externally-injected <code>traceparent</code> headers and propagates trace context across gateway and sidecar boundaries, generating coherent multi-hop traces confirmed across 405 unique trace IDs.</li>
+                    <li><strong>Native OTLP gRPC trace export</strong> — The <code>Telemetry</code> CR + <code>meshConfig.extensionProviders</code> provides a clean, Kubernetes-native configuration API. The <code>Telemetry</code> CR is stable (v1), sampling is per-namespace configurable, and the integration requires no sidecar code changes.</li>
+                    <li><strong>Rich operational span attributes</strong> — Envoy spans include <code>istio.canonical_service</code>, <code>istio.namespace</code>, <code>istio.mesh_id</code>, <code>response_flags</code>, <code>upstream_cluster</code>, and <code>guid:x-request-id</code> — valuable mesh-level context for debugging traffic issues even without full semconv alignment.</li>
+                </ul>
+            </div>
+            <div class="takeaway-box improvements">
+                <h3>● Priority improvements</h3>
+                <ul>
+                    <li><strong>Migrate to current HTTP semconv</strong> — Replace deprecated attributes (<code>http.method</code>, <code>http.status_code</code>, <code>net.*</code>) with stable equivalents (<code>http.request.method</code>, <code>http.response.status_code</code>, <code>network.*</code>) — requires upstream Envoy OTel tracer changes.</li>
+                    <li><strong>Add OTLP metrics export</strong> — Extend <code>meshConfig.extensionProviders</code> with an OTLP metrics provider to unify the collection pipeline and enable consistent <code>service.name</code> identity across traces and metrics.</li>
+                    <li><strong>Add traceId/spanId to access logs</strong> — Use Envoy's <code>%TRACEID%</code> access log formatter to include trace context in JSON access logs, enabling correlation between log entries and distributed traces.</li>
+                    <li><strong>Set schemaUrl on OTLP exports</strong> — Add <code>schemaUrl</code> to Envoy OTLP resource and scope exports to enable tooling to understand the semconv version in use and support automated migration transforms.</li>
+                </ul>
+            </div>
+        </div>
+        <div class="takeaway-box observations" style="margin-top: 16px;">
+            <h3>● Notable observations</h3>
+            <ul>
+                <li><strong>istio_requests_total was absent</strong> — The primary Istio L7 SLI metrics (<code>istio_requests_total</code>, <code>istio_request_duration_milliseconds</code>) were not present in scraped data. These require the Envoy stats filter (Telemetry v2 WASM plugin) — the <code>mesh-metrics</code> Telemetry CR was applied but the metrics did not appear on ports 15020 or 15090 for the demo workload. This may be a configuration timing issue.</li>
+                <li><strong>Non-standard service.name format embeds namespace</strong> — Envoy sets <code>service.name</code> to <code>otel-eval-backend.demo</code> (embedding the namespace), deviating from the OTel standard of a separate <code>service.namespace</code> attribute. This makes it harder to use <code>service.name</code> as a direct workload identifier in backends that expect standard format.</li>
+                <li><strong>telemetry.sdk.version is a git hash, not semver</strong> — The value <code>af30be60b7c35f2aceaea1b7382c7fbf12aa5e67/1.37.2-dev/Clean/RELEASE/BoringSSL</code> is an Envoy build identifier, not a standard version string. This makes it difficult to correlate the SDK version to a specific Envoy release or track semconv migration progress in automated tooling.</li>
+            </ul>
+        </div>
+    </div>
+
+</div><!-- /container -->
+
+<footer class="site-footer">
+    <div class="footer-inner">
+        <span class="corner-flow">
+            <span class="node" style="background: var(--green)"></span>
+            <span class="line"></span>
+            <span class="node" style="background: var(--electric-bright)"></span>
+            <span class="line"></span>
+            <span class="node" style="background: var(--electric-glow)"></span>
+            <span style="margin-left: 4px">
+                evaluated · Istio · <a href="https://github.com/istio/istio">github.com/istio/istio</a>
+            </span>
+        </span>
+        <span>Telemetry collected in kind cluster (otel-eval-istio) running Istio 1.29.2 with OTel Collector v0.150.1 file exporter · evaluate-otel-maturity v0.0.2 · generate-otel-report v0.0.6</span>
+    </div>
+</footer>
+
+<script>
+    /*
+      Radar chart — colors track CSS custom properties so it adapts to theme toggles.
+      Score order must match labels exactly:
+        [Integration Surface, Semantic Conventions, Resource Attrs, Trace Modeling,
+         Multi-Signal, Audience & Quality, Stability & Change Mgmt]
+    */
+    const DIMENSION_SCORES = [
+        /* Integration Surface          */ 2,
+        /* Semantic Conventions         */ 1,
+        /* Resource Attrs & Config      */ 2,
+        /* Trace Modeling & Propagation */ 3,
+        /* Multi-Signal Observability   */ 1,
+        /* Audience & Signal Quality    */ 2,
+        /* Stability & Change Mgmt      */ 1,
+    ];
+
+    const PROJECT_LABEL = 'Istio 1.29.2';
+
+    function readVar(name) {
+        return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    }
+
+    let radarChart;
+
+    function buildRadar(animate) {
+        const ctx = document.getElementById('radarChart').getContext('2d');
+        if (radarChart) radarChart.destroy();
+        radarChart = new Chart(ctx, {
+            type: 'radar',
+            data: {
+                labels: [
+                    ['Integration', 'Surface'],
+                    ['Semantic', 'Conventions'],
+                    ['Resource Attrs', '& Configuration'],
+                    ['Trace Modeling', '& Propagation'],
+                    ['Multi-Signal', 'Observability'],
+                    ['Audience &', 'Signal Quality'],
+                    ['Stability &', 'Change Mgmt']
+                ],
+                datasets: [{
+                    label: PROJECT_LABEL,
+                    data: DIMENSION_SCORES,
+                    backgroundColor: readVar('--chart-fill'),
+                    borderColor: readVar('--chart-line'),
+                    borderWidth: 2,
+                    pointBackgroundColor: readVar('--chart-point-bg'),
+                    pointBorderColor: readVar('--chart-point-border'),
+                    pointBorderWidth: 1.5,
+                    pointRadius: 4,
+                    pointHoverRadius: 6,
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                animation: animate ? { duration: 1400, easing: 'easeOutQuart' } : false,
+                scales: {
+                    r: {
+                        min: 0,
+                        max: 3,
+                        ticks: {
+                            stepSize: 1,
+                            callback: (v) => ['Instrumented', 'Aligned', 'Native', 'Optimized'][v] || v,
+                            font: { family: 'JetBrains Mono', size: 10 },
+                            color: readVar('--text-subtle'),
+                            backdropColor: 'transparent',
+                        },
+                        grid: { color: readVar('--chart-grid') },
+                        angleLines: { color: readVar('--chart-grid') },
+                        pointLabels: {
+                            font: { family: 'Inter', size: 12, weight: '500' },
+                            color: readVar('--chart-label'),
+                        }
+                    }
+                },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        backgroundColor: readVar('--bg-150'),
+                        titleColor: readVar('--text-intense'),
+                        bodyColor: readVar('--text-default'),
+                        borderColor: readVar('--border'),
+                        borderWidth: 1,
+                        padding: 10,
+                        titleFont: { family: 'Inter', weight: '600' },
+                        bodyFont: { family: 'JetBrains Mono', size: 11 },
+                        callbacks: {
+                            label: (ctx) => {
+                                const names = ['Instrumented', 'OTel-Aligned', 'OTel-Native', 'OTel-Optimized'];
+                                return ` Level ${ctx.raw} — ${names[ctx.raw]}`;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    buildRadar(true);
+
+    // ── Theme toggle ─────────────────────────────────────────────
+    const toggle = document.getElementById('theme-toggle');
+    toggle.addEventListener('click', () => {
+        const next = document.documentElement.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
+        document.documentElement.setAttribute('data-theme', next);
+        try { localStorage.setItem('theme', next); } catch (e) {}
+        buildRadar(false);
+    });
+</script>
+</body>
+</html>
