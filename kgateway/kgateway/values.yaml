@@ -1,0 +1,9 @@
+controller:
+  logLevel: info
+  replicaCount: 1
+
+# Default pod annotations include prometheus.io/scrape: "true"
+podAnnotations:
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "9092"
+  prometheus.io/path: "/metrics"
