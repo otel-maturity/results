@@ -1,0 +1,53 @@
+# ReferenceGrant: allow ListenerPolicy in "demo" to reference Services in "opentelemetry"
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: ReferenceGrant
+metadata:
+  name: allow-demo-to-opentelemetry
+  namespace: opentelemetry
+spec:
+  from:
+    - group: gateway.kgateway.dev
+      kind: ListenerPolicy
+      namespace: demo
+  to:
+    - group: ""
+      kind: Service
+---
+# ListenerPolicy: configure OTel tracing + access logs on the Envoy proxy
+apiVersion: gateway.kgateway.dev/v1alpha1
+kind: ListenerPolicy
+metadata:
+  name: otel-tracing-and-logs
+  namespace: demo
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: demo-gateway
+  default:
+    httpSettings:
+      tracing:
+        provider:
+          openTelemetry:
+            grpcService:
+              backendRef:
+                group: ""
+                kind: Service
+                name: otel-collector-opentelemetry-collector
+                namespace: opentelemetry
+                port: 4317
+            serviceName: "kgateway-envoy.demo"
+        randomSampling: 100
+        overallSampling: 100
+        verbose: true
+        spawnUpstreamSpan: true
+      accessLog:
+        - openTelemetry:
+            grpcService:
+              backendRef:
+                group: ""
+                kind: Service
+                name: otel-collector-opentelemetry-collector
+                namespace: opentelemetry
+                port: 4317
+              logName: "envoy-access-log"

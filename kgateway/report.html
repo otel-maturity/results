@@ -1,0 +1,1024 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>kgateway — OpenTelemetry Maturity Report</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <script>
+        (function () {
+            var theme = 'dark';
+            try {
+                var stored = localStorage.getItem('theme');
+                if (stored === 'light' || stored === 'dark') theme = stored;
+            } catch (e) {}
+            document.documentElement.setAttribute('data-theme', theme);
+        })();
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        /* ── Theme tokens (mirror otel-maturity.io) ────────────────── */
+        :root,
+        :root[data-theme="dark"] {
+            --bg-50: #060912;
+            --bg-100: #101622;
+            --bg-150: #19202d;
+            --border: #232c3a;
+            --border-strong: #38445a;
+            --text-intense: #f5f9ff;
+            --text-default: #9aa6b8;
+            --text-subtle: #67738a;
+            --electric: #0ea5e9;
+            --electric-bright: #38bdf8;
+            --electric-glow: #67e8f9;
+            --green: #62d08d;
+            --amber: #f5b860;
+            --red: #f87171;
+            --surface: #101622;
+            --surface-glass: rgba(29, 32, 41, 0.5);
+            --grid-line: rgba(255, 255, 255, 0.02);
+            --bg-glow-1: rgba(56, 189, 248, 0.14);
+            --bg-glow-2: rgba(14, 165, 233, 0.08);
+            --visual-glow: rgba(56, 189, 248, 0.24);
+            --chart-grid: rgba(255, 255, 255, 0.07);
+            --chart-label: #d0d4d9;
+            --chart-fill: rgba(56, 189, 248, 0.18);
+            --chart-line: #38bdf8;
+            --chart-point-bg: #67e8f9;
+            --chart-point-border: #38bdf8;
+            --underline-soft: rgba(56, 189, 248, 0.4);
+
+            --level-0-bg: rgba(248, 113, 113, 0.12);
+            --level-0-border: rgba(248, 113, 113, 0.35);
+            --level-0-fg: #fca5a5;
+            --level-1-bg: rgba(245, 184, 96, 0.12);
+            --level-1-border: rgba(245, 184, 96, 0.35);
+            --level-1-fg: #fbbf6b;
+            --level-2-bg: rgba(56, 189, 248, 0.12);
+            --level-2-border: rgba(56, 189, 248, 0.35);
+            --level-2-fg: #7dd3fc;
+            --level-3-bg: rgba(98, 208, 141, 0.12);
+            --level-3-border: rgba(98, 208, 141, 0.35);
+            --level-3-fg: #86efac;
+
+            --opp-bg: rgba(245, 184, 96, 0.08);
+            --opp-border: #f5b860;
+            --opp-fg: #fbbf6b;
+            --code-bg: rgba(56, 189, 248, 0.08);
+            --code-fg: #7dd3fc;
+        }
+
+        :root[data-theme="light"] {
+            --bg-50: #f8fafc;
+            --bg-100: #ffffff;
+            --bg-150: #f1f5f9;
+            --border: #e1e6ed;
+            --border-strong: #adb6c2;
+            --text-intense: #0c1322;
+            --text-default: #4a5568;
+            --text-subtle: #6b7589;
+            --electric: #0284c7;
+            --electric-bright: #0ea5e9;
+            --electric-glow: #0891b2;
+            --green: #16a34a;
+            --amber: #c2710c;
+            --red: #dc2626;
+            --surface: #ffffff;
+            --surface-glass: rgba(255, 255, 255, 0.7);
+            --grid-line: rgba(15, 23, 42, 0.04);
+            --bg-glow-1: rgba(56, 189, 248, 0.18);
+            --bg-glow-2: rgba(2, 132, 199, 0.08);
+            --visual-glow: rgba(14, 165, 233, 0.18);
+            --chart-grid: rgba(15, 23, 42, 0.08);
+            --chart-label: #475569;
+            --chart-fill: rgba(14, 165, 233, 0.16);
+            --chart-line: #0284c7;
+            --chart-point-bg: #06b6d4;
+            --chart-point-border: #0284c7;
+            --underline-soft: rgba(2, 132, 199, 0.35);
+
+            --level-0-bg: #fff1f2;
+            --level-0-border: #fda4af;
+            --level-0-fg: #be123c;
+            --level-1-bg: #fff7ed;
+            --level-1-border: #fdba74;
+            --level-1-fg: #b45309;
+            --level-2-bg: #ecfeff;
+            --level-2-border: #67e8f9;
+            --level-2-fg: #0e7490;
+            --level-3-bg: #f0fdf4;
+            --level-3-border: #86efac;
+            --level-3-fg: #166534;
+
+            --opp-bg: #fff7ed;
+            --opp-border: #f59e0b;
+            --opp-fg: #92400e;
+            --code-bg: #ecfeff;
+            --code-fg: #0e7490;
+        }
+
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        html, body { margin: 0; padding: 0; }
+
+        body {
+            font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
+            background: var(--bg-50);
+            color: var(--text-intense);
+            min-height: 100vh;
+            line-height: 1.6;
+            overflow-x: hidden;
+            position: relative;
+            transition: background-color .25s ease, color .25s ease;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        /* ── Ambient background (matches landing page) ─────────────── */
+        .bg {
+            position: fixed; inset: 0; z-index: 0; pointer-events: none;
+            background:
+                radial-gradient(ellipse 50% 60% at 75% 0%, var(--bg-glow-1), transparent 60%),
+                radial-gradient(ellipse 40% 50% at 20% 100%, var(--bg-glow-2), transparent 60%),
+                var(--bg-50);
+        }
+        .grid-overlay {
+            position: fixed; inset: 0; z-index: 0; pointer-events: none;
+            background-image:
+                linear-gradient(to right, var(--grid-line) 1px, transparent 1px),
+                linear-gradient(to bottom, var(--grid-line) 1px, transparent 1px);
+            background-size: 64px 64px;
+            mask-image: radial-gradient(ellipse 90% 80% at 50% 30%, black, transparent 90%);
+        }
+
+        a {
+            color: var(--electric-bright);
+            text-decoration: none;
+            border-bottom: 1px dotted var(--underline-soft);
+            transition: color .15s ease, border-color .15s ease;
+        }
+        a:hover { color: var(--electric-glow); border-bottom-color: var(--electric-glow); }
+
+        /* ── Page scaffolding ──────────────────────────────────────── */
+        .page {
+            position: relative; z-index: 1;
+            padding: 24px clamp(20px, 5vw, 48px) 0;
+        }
+        .topbar {
+            max-width: 1080px; margin: 0 auto;
+            display: flex; align-items: center; justify-content: space-between; gap: 16px;
+        }
+        .topbar-meta {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12px; color: var(--text-subtle);
+        }
+        .theme-toggle {
+            display: inline-flex; align-items: center; justify-content: center;
+            width: 32px; height: 32px;
+            background: var(--surface-glass);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text-default);
+            cursor: pointer;
+            backdrop-filter: blur(8px);
+            transition: color .15s ease, border-color .15s ease, background-color .15s ease;
+        }
+        .theme-toggle:hover { color: var(--text-intense); border-color: var(--border-strong); }
+        .theme-toggle svg { width: 16px; height: 16px; display: block; }
+        .theme-toggle .icon-moon { display: none; }
+        :root[data-theme="light"] .theme-toggle .icon-moon { display: block; }
+        :root[data-theme="light"] .theme-toggle .icon-sun { display: none; }
+
+        /* ── Hero header ───────────────────────────────────────────── */
+        .site-header {
+            position: relative; z-index: 1;
+            padding: 48px clamp(20px, 5vw, 48px) 56px;
+        }
+        .header-inner { max-width: 1080px; margin: 0 auto; }
+        .pill {
+            display: inline-flex; align-items: center; gap: 8px;
+            font-size: 11px; color: var(--text-default);
+            padding: 6px 12px;
+            border: 1px solid var(--border); border-radius: 999px;
+            text-transform: uppercase; letter-spacing: .1em; font-weight: 500;
+            background: var(--surface-glass); backdrop-filter: blur(8px);
+            margin-bottom: 24px;
+        }
+        .pulse { width: 6px; height: 6px; border-radius: 50%; background: var(--green); animation: pulse 2.2s ease-in-out infinite; }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(98, 208, 141, .5); }
+            50% { opacity: .7; box-shadow: 0 0 0 6px rgba(98, 208, 141, 0); }
+        }
+        h1.title {
+            font-size: clamp(34px, 5vw, 52px);
+            font-weight: 600; letter-spacing: -.025em; line-height: 1.05;
+            color: var(--text-intense);
+            margin: 0 0 16px;
+        }
+        h1.title .accent {
+            background: linear-gradient(135deg, var(--electric), var(--electric-glow));
+            -webkit-background-clip: text; background-clip: text; color: transparent;
+        }
+        .subtitle {
+            font-size: clamp(15px, 1.4vw, 17px);
+            color: var(--text-default); line-height: 1.6;
+            max-width: 640px;
+            margin: 0 0 28px;
+        }
+        .header-meta {
+            display: flex; flex-wrap: wrap; gap: 20px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12px; color: var(--text-subtle);
+        }
+        .header-meta span { display: inline-flex; align-items: center; gap: 6px; }
+        .header-meta strong { color: var(--text-default); font-weight: 500; }
+        .header-meta .label { color: var(--text-subtle); text-transform: uppercase; letter-spacing: .08em; font-size: 10px; }
+
+        /* ── Layout ────────────────────────────────────────────────── */
+        .container {
+            position: relative; z-index: 1;
+            max-width: 1080px; margin: 0 auto;
+            padding: 16px clamp(20px, 5vw, 48px) 40px;
+        }
+
+        /* ── Section title ─────────────────────────────────────────── */
+        .section-title {
+            font-size: 11px; font-weight: 600;
+            color: var(--text-subtle); text-transform: uppercase;
+            letter-spacing: .12em;
+            padding-bottom: 12px;
+            margin-bottom: 20px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        /* ── Surface cards (glass) ─────────────────────────────────── */
+        .card {
+            background: var(--surface-glass);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            backdrop-filter: blur(12px);
+            padding: 28px;
+            margin-bottom: 24px;
+        }
+
+        /* ── Radar chart ───────────────────────────────────────────── */
+        .chart-wrap {
+            position: relative;
+            display: flex; justify-content: center; align-items: center;
+            padding: 8px 0 16px;
+        }
+        .chart-wrap::before {
+            content: ""; position: absolute; inset: 0;
+            background: radial-gradient(ellipse 55% 55% at 50% 50%, var(--visual-glow), transparent 70%);
+            filter: blur(40px); pointer-events: none; z-index: 0;
+        }
+        .chart-wrap canvas { position: relative; z-index: 1; max-width: 480px; max-height: 480px; }
+
+        .score-legend {
+            display: flex; justify-content: center; gap: 24px; flex-wrap: wrap;
+            margin-top: 8px; font-size: 12px; color: var(--text-default);
+        }
+        .score-legend-item { display: inline-flex; align-items: center; gap: 8px; }
+        .score-legend-dot { width: 10px; height: 10px; border-radius: 50%; }
+
+        /* ── Summary table ─────────────────────────────────────────── */
+        .summary-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+        .summary-table th {
+            text-align: left; padding: 12px 14px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px; font-weight: 500;
+            text-transform: uppercase; letter-spacing: .08em;
+            color: var(--text-subtle);
+            border-bottom: 1px solid var(--border);
+        }
+        .summary-table td {
+            padding: 14px;
+            color: var(--text-default);
+            border-bottom: 1px solid var(--border);
+            vertical-align: top;
+        }
+        .summary-table td strong { color: var(--text-intense); font-weight: 600; }
+        .summary-table tr:last-child td { border-bottom: none; }
+        .summary-table tr:hover td { background: rgba(255, 255, 255, 0.02); }
+        :root[data-theme="light"] .summary-table tr:hover td { background: rgba(15, 23, 42, 0.025); }
+
+        /* ── Level badges (semantic palette) ───────────────────────── */
+        .level-badge {
+            display: inline-block; padding: 3px 10px; border-radius: 999px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px; font-weight: 500; white-space: nowrap;
+            border: 1px solid transparent;
+        }
+        .level-0 { background: var(--level-0-bg); color: var(--level-0-fg); border-color: var(--level-0-border); }
+        .level-1 { background: var(--level-1-bg); color: var(--level-1-fg); border-color: var(--level-1-border); }
+        .level-2 { background: var(--level-2-bg); color: var(--level-2-fg); border-color: var(--level-2-border); }
+        .level-3 { background: var(--level-3-bg); color: var(--level-3-fg); border-color: var(--level-3-border); }
+
+        /* ── Signal cards ──────────────────────────────────────────── */
+        .signals-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+        .signal-card {
+            border-radius: 12px;
+            padding: 20px;
+            text-align: center;
+            border: 1px solid var(--border);
+            background: var(--bg-100);
+            transition: border-color .15s ease, transform .15s ease;
+        }
+        .signal-card.flowing { border-color: var(--level-3-border); background: var(--level-3-bg); }
+        .signal-card.partial { border-color: var(--level-1-border); background: var(--level-1-bg); }
+        .signal-card.not-flowing { border-color: var(--level-0-border); background: var(--level-0-bg); }
+        .signal-icon { font-size: 1.8rem; margin-bottom: 8px; }
+        .signal-name {
+            font-size: 14px; font-weight: 600;
+            color: var(--text-intense);
+            margin-bottom: 6px;
+        }
+        .signal-status {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px; font-weight: 500;
+            text-transform: uppercase; letter-spacing: .06em;
+        }
+        .signal-card.flowing .signal-status { color: var(--level-3-fg); }
+        .signal-card.partial .signal-status { color: var(--level-1-fg); }
+        .signal-card.not-flowing .signal-status { color: var(--level-0-fg); }
+        .signal-detail { font-size: 12px; color: var(--text-default); margin-top: 8px; }
+
+        /* ── Dimension sections (collapsibles) ─────────────────────── */
+        .dimension-section { margin-bottom: 12px; }
+        details {
+            border-radius: 12px;
+            border: 1px solid var(--border);
+            background: var(--surface-glass);
+            backdrop-filter: blur(12px);
+            overflow: hidden;
+            transition: border-color .15s ease;
+        }
+        details[open] { border-color: var(--border-strong); }
+        summary {
+            display: flex; align-items: center; gap: 14px;
+            padding: 16px 20px; cursor: pointer;
+            list-style: none; user-select: none;
+            transition: background .15s ease;
+        }
+        summary:hover { background: rgba(255, 255, 255, 0.02); }
+        :root[data-theme="light"] summary:hover { background: rgba(15, 23, 42, 0.025); }
+        summary::-webkit-details-marker { display: none; }
+        .dim-title { font-weight: 600; font-size: 15px; color: var(--text-intense); flex: 1; }
+        .dim-summary { font-size: 13px; color: var(--text-default); }
+        .summary-arrow {
+            margin-left: auto; color: var(--text-subtle);
+            transition: transform .2s ease;
+            font-size: 11px;
+        }
+        details[open] .summary-arrow { transform: rotate(90deg); color: var(--electric-bright); }
+
+        .dim-content {
+            padding: 20px 24px 24px;
+            border-top: 1px solid var(--border);
+            background: var(--bg-100);
+        }
+        .dim-content h4 {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px; font-weight: 500;
+            text-transform: uppercase; letter-spacing: .1em;
+            color: var(--text-subtle);
+            margin: 18px 0 10px;
+        }
+        .dim-content h4:first-child { margin-top: 0; }
+        .dim-content p { font-size: 14px; color: var(--text-default); margin-bottom: 8px; }
+        .dim-content ul { padding-left: 20px; }
+        .dim-content li { font-size: 14px; color: var(--text-default); margin-bottom: 6px; }
+        code {
+            background: var(--code-bg); color: var(--code-fg);
+            padding: 1px 6px; border-radius: 4px;
+            font-family: 'JetBrains Mono', monospace; font-size: 12px;
+        }
+
+        .checklist { list-style: none; padding: 0; }
+        .checklist li {
+            display: flex; gap: 10px; align-items: flex-start;
+            font-size: 13px; padding: 4px 0;
+            color: var(--text-default);
+        }
+        .check-pass { color: var(--green); font-weight: 600; flex-shrink: 0; }
+        .check-fail { color: var(--red); font-weight: 600; flex-shrink: 0; }
+
+        .opportunity-box {
+            background: var(--opp-bg);
+            border-left: 3px solid var(--opp-border);
+            padding: 12px 16px;
+            border-radius: 0 8px 8px 0;
+            margin: 10px 0;
+            font-size: 13px;
+            color: var(--opp-fg);
+        }
+        .opportunity-box strong { color: var(--opp-fg); }
+
+        /* ── Key takeaways ─────────────────────────────────────────── */
+        .takeaways-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+        .takeaway-box {
+            border-radius: 12px;
+            padding: 20px 22px;
+            border: 1px solid;
+        }
+        .takeaway-box.strengths { background: var(--level-3-bg); border-color: var(--level-3-border); }
+        .takeaway-box.improvements { background: var(--level-1-bg); border-color: var(--level-1-border); }
+        .takeaway-box.observations { background: var(--level-2-bg); border-color: var(--level-2-border); }
+        .takeaway-box h3 {
+            font-size: 13px; font-weight: 600;
+            text-transform: uppercase; letter-spacing: .08em;
+            margin-bottom: 12px;
+        }
+        .takeaway-box.strengths h3 { color: var(--level-3-fg); }
+        .takeaway-box.improvements h3 { color: var(--level-1-fg); }
+        .takeaway-box.observations h3 { color: var(--level-2-fg); }
+        .takeaway-box ul { padding-left: 18px; }
+        .takeaway-box li {
+            font-size: 13px; margin-bottom: 8px; color: var(--text-default);
+        }
+        .takeaway-box li strong { color: var(--text-intense); font-weight: 600; }
+
+        /* ── Footer ────────────────────────────────────────────────── */
+        .site-footer {
+            position: relative; z-index: 1;
+            border-top: 1px solid var(--border);
+            padding: 24px clamp(20px, 5vw, 48px) 32px;
+            margin-top: 40px;
+        }
+        .footer-inner {
+            max-width: 1080px; margin: 0 auto;
+            display: flex; flex-wrap: wrap; gap: 16px;
+            align-items: center; justify-content: space-between;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px; color: var(--text-subtle);
+        }
+        .footer-inner a { color: var(--electric-bright); }
+        .corner-flow { display: inline-flex; gap: 6px; align-items: center; opacity: .85; }
+        .corner-flow .node { width: 6px; height: 6px; border-radius: 50%; }
+        .corner-flow .line { width: 14px; height: 1px; background: var(--border-strong); }
+
+        /* ── Responsive ────────────────────────────────────────────── */
+        @media (max-width: 700px) {
+            .signals-grid { grid-template-columns: 1fr; }
+            .takeaways-grid { grid-template-columns: 1fr; }
+            .header-meta { gap: 12px; }
+            summary { flex-wrap: wrap; }
+            .dim-summary { width: 100%; padding-left: 36px; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="bg"></div>
+<div class="grid-overlay"></div>
+
+<!-- ═══════════════════════════════════════════════════════ TOP BAR -->
+<div class="page">
+    <header class="topbar">
+        <span class="topbar-meta">otel-maturity · report</span>
+        <button id="theme-toggle" class="theme-toggle" type="button" aria-label="Toggle light and dark theme">
+            <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <circle cx="12" cy="12" r="4"></circle>
+                <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"></path>
+            </svg>
+            <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+            </svg>
+        </button>
+    </header>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ HEADER -->
+<!--
+  TEMPLATE VARIABLES (replace all {{...}} placeholders before use):
+    kgateway        — e.g. "Tekton Pipelines"
+    CNCF Sandbox Project   — e.g. "CNCF Graduated Project"
+    v2.2.4     — e.g. "v1.11.1"
+    2026-05-10           — e.g. "2026-05-01"
+    https://github.com/kgateway-dev/kgateway    — e.g. "https://github.com/tektoncd/pipeline"
+    github.com/kgateway-dev/kgateway  — e.g. "github.com/tektoncd/pipeline"
+    Telemetry collected in kind cluster (otel-eval-kgateway) with OTel Collector file exporter · Generated by generate-otel-report v0.0.6          — e.g. "Telemetry collected in kind cluster with OTel Collector file exporter"
+    evaluate-otel-maturity v0.0.2       — e.g. "evaluate-otel-maturity v0.0.2"
+
+  DIMENSION SCORES (0–3 per dimension):
+    1   — Integration Surface
+    0       — Semantic Conventions
+    1      — Resource Attributes & Configuration
+    2         — Trace Modeling & Context Propagation
+    2   — Multi-Signal Observability
+    1       — Audience & Signal Quality
+    1     — Stability & Change Management
+-->
+<header class="site-header">
+    <div class="header-inner">
+        <div class="pill">
+            <span class="pulse"></span>
+            <span>CNCF Sandbox Project</span>
+        </div>
+        <h1 class="title">kgateway <span class="accent">maturity report.</span></h1>
+        <p class="subtitle">
+            A dimension-by-dimension look at how kgateway supports OpenTelemetry,
+            evaluated against the draft OTel Support Maturity Model.
+        </p>
+        <div class="header-meta">
+            <span><span class="label">Version</span><strong>v2.2.4</strong></span>
+            <span><span class="label">Evaluated</span><strong>2026-05-10</strong></span>
+            <span><span class="label">Model</span><strong>OTel Support Maturity (draft)</strong></span>
+            <span><span class="label">Skill</span><strong>evaluate-otel-maturity v0.0.2</strong></span>
+        </div>
+    </div>
+</header>
+
+<div class="container">
+
+    <!-- ═══════════════════════════════════════════════════ RADAR CHART -->
+    <div class="card">
+        <div class="section-title">Maturity overview</div>
+        <div class="chart-wrap">
+            <canvas id="radarChart"></canvas>
+        </div>
+        <div class="score-legend">
+            <div class="score-legend-item"><div class="score-legend-dot" style="background: var(--level-0-fg)"></div> 0 — Instrumented</div>
+            <div class="score-legend-item"><div class="score-legend-dot" style="background: var(--level-1-fg)"></div> 1 — OTel-Aligned</div>
+            <div class="score-legend-item"><div class="score-legend-dot" style="background: var(--level-2-fg)"></div> 2 — OTel-Native</div>
+            <div class="score-legend-item"><div class="score-legend-dot" style="background: var(--level-3-fg)"></div> 3 — OTel-Optimized</div>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════ SUMMARY TABLE -->
+    <div class="card">
+        <div class="section-title">Dimension scores</div>
+        <table class="summary-table">
+            <thead>
+            <tr>
+                <th>Dimension</th>
+                <th>Level</th>
+                <th>Summary</th>
+            </tr>
+            </thead>
+            <tbody>
+            <!--
+              For each row, set the level-badge class to match the score:
+                level-0 → "0 — Instrumented"
+                level-1 → "1 — OTel-Aligned"
+                level-2 → "2 — OTel-Native"
+                level-3 → "3 — OTel-Optimized"
+              Replace {{SUMMARY_*}} with a one-line description of findings.
+            -->
+            <tr>
+                <td><strong>Integration Surface</strong></td>
+                <td><span class="level-badge level-1">1 — OTel-Aligned</span></td>
+                <td>OTLP supported for traces and logs (data plane); metrics are Prometheus-only with no OTLP push path</td>
+            </tr>
+            <tr>
+                <td><strong>Semantic Conventions</strong></td>
+                <td><span class="level-badge level-0">0 — Instrumented</span></td>
+                <td>Envoy emits deprecated HTTP attributes (http.method, http.url, http.status_code) with wrong types; no current semconv alignment</td>
+            </tr>
+            <tr>
+                <td><strong>Resource Attributes &amp; Configuration</strong></td>
+                <td><span class="level-badge level-1">1 — OTel-Aligned</span></td>
+                <td>service.name present but inconsistent across signals; service.version absent; no OTEL_* env var support</td>
+            </tr>
+            <tr>
+                <td><strong>Trace Modeling &amp; Context Propagation</strong></td>
+                <td><span class="level-badge level-2">2 — OTel-Native</span></td>
+                <td>Coherent ingress/egress span tree; W3C Trace Context propagated end-to-end with confirmed backend correlation</td>
+            </tr>
+            <tr>
+                <td><strong>Multi-Signal Observability</strong></td>
+                <td><span class="level-badge level-2">2 — OTel-Native</span></td>
+                <td>All three signals present and correlated; logs carry traceId/spanId matching trace spans</td>
+            </tr>
+            <tr>
+                <td><strong>Audience &amp; Signal Quality</strong></td>
+                <td><span class="level-badge level-1">1 — OTel-Aligned</span></td>
+                <td>Span names partially useful; Envoy-internal naming leaks into span names and attributes</td>
+            </tr>
+            <tr>
+                <td><strong>Stability &amp; Change Management</strong></td>
+                <td><span class="level-badge level-1">1 — OTel-Aligned</span></td>
+                <td>Observability documented in official docs with OTel guide; no explicit telemetry stability contract or changelog sections</td>
+            </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════ SIGNALS -->
+    <!--
+      Each signal card takes one of three CSS classes:
+        flowing      → green  (signal confirmed working end-to-end)
+        partial      → amber  (signal exists but incomplete / partially configured)
+        not-flowing  → red    (signal absent or not exported via OTel)
+    -->
+    <div class="card">
+        <div class="section-title">Signal status</div>
+        <div class="signals-grid">
+
+            <div class="signal-card flowing">
+                <div class="signal-icon">🔍</div>
+                <div class="signal-name">Traces</div>
+                <div class="signal-status">✓ Flowing</div>
+                <div class="signal-detail">OTLP gRPC to collector port 4317 (Envoy data plane)</div>
+            </div>
+
+            <div class="signal-card partial">
+                <div class="signal-icon">📊</div>
+                <div class="signal-name">Metrics</div>
+                <div class="signal-status">~ Partial</div>
+                <div class="signal-detail">Prometheus scrape only (controller port 9092, Envoy proxy port 9091) — no OTLP push path</div>
+            </div>
+
+            <div class="signal-card flowing">
+                <div class="signal-icon">📋</div>
+                <div class="signal-name">Logs</div>
+                <div class="signal-status">✓ Flowing</div>
+                <div class="signal-detail">OTLP gRPC via Envoy OTel ALS; logs carry traceId/spanId but body is empty</div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════ DIMENSIONS -->
+    <div class="section-title" style="margin-top: 32px;">Dimension details</div>
+
+    <!-- 1. Integration Surface -->
+    <div class="dimension-section">
+        <details open>
+            <summary>
+                <span class="level-badge level-1">1</span>
+                <span class="dim-title">Integration Surface</span>
+                <span class="dim-summary">OTLP supported for traces and logs (data plane); metrics are Prometheus-only with no OTLP push path</span>
+                <span class="summary-arrow">▶</span>
+            </summary>
+            <div class="dim-content">
+                <h4>What we observed</h4>
+                <p>kgateway supports OTLP gRPC natively for two of its three signals. Traces from the Envoy data plane are sent via OTLP gRPC to a configurable <code>BackendRef</code> (Kubernetes Service), confirmed flowing to collector port 4317. Access logs are delivered via OTel ALS (OTLP gRPC) to the same endpoint. Both are configured through kgateway-specific CRDs — <code>ListenerPolicy.spec.default.httpSettings.tracing.provider.openTelemetry.grpcService</code> for traces and <code>ListenerPolicy.spec.default.httpSettings.accessLog[].openTelemetry.grpcService</code> for logs. Metrics, however, are Prometheus-only: the controller exposes <code>/metrics</code> on port 9092 and the Envoy proxy on port 9091, with no OTLP push path available. The official docs acknowledge this and recommend using the OTel Collector as a Prometheus scraper to bridge metrics into the OTel ecosystem.</p>
+
+                <h4>What's working well</h4>
+                <ul>
+                    <li>OTLP gRPC is the native transport for both traces and logs — no sidecar or adapter needed for these two signals.</li>
+                    <li>The official docs include a dedicated "Set up the OpenTelemetry stack" guide (<code>/docs/envoy/latest/observability/otel-stack/</code>) covering all three signals, positioning OTel as the recommended integration path.</li>
+                </ul>
+
+                <h4>Opportunities</h4>
+                <div class="opportunity-box">
+                    <strong>Add OTLP metrics export</strong> — Adding an OTLP push exporter to the kgateway controller would complete the integration surface and eliminate the Prometheus-scrape dependency for metrics, making all three signals native OTLP.
+                </div>
+                <div class="opportunity-box">
+                    <strong>Simplify cross-namespace setup</strong> — When the <code>ListenerPolicy</code> and OTel Collector are in different namespaces, a <code>ReferenceGrant</code> is required. Documenting this prominently and potentially providing a helper resource would reduce integration friction for production setups.
+                </div>
+
+                <h4>Checklist</h4>
+                <ul class="checklist">
+                    <li><span class="check-pass">✓</span> OTLP is supported for traces and logs</li>
+                    <li><span class="check-pass">✓</span> OTel Collector is the documented integration path with a dedicated official guide</li>
+                    <li><span class="check-fail">✗</span> Metrics have no OTLP push path — Prometheus scrape only</li>
+                    <li><span class="check-fail">✗</span> Configuration uses project-specific CRDs, not standard <code>OTEL_*</code> environment variables</li>
+                </ul>
+            </div>
+        </details>
+    </div>
+
+    <!-- 2. Semantic Conventions -->
+    <div class="dimension-section">
+        <details>
+            <summary>
+                <span class="level-badge level-0">0</span>
+                <span class="dim-title">Semantic Conventions</span>
+                <span class="dim-summary">Envoy emits deprecated HTTP attributes (http.method, http.url, http.status_code) with wrong types; no current semconv alignment</span>
+                <span class="summary-arrow">▶</span>
+            </summary>
+            <div class="dim-content">
+                <h4>What we observed</h4>
+                <p>Envoy's OTel tracer emits HTTP span attributes using pre-v1.23 OpenTelemetry semantic conventions. All observed HTTP attributes are deprecated: <code>http.method</code> (replaced by <code>http.request.method</code>), <code>http.url</code> (replaced by <code>url.full</code>), and <code>http.status_code</code> (replaced by <code>http.response.status_code</code>). Additionally, <code>http.status_code</code> is emitted as a <code>stringValue: "200"</code> instead of the correct <code>intValue: 200</code>. Several proprietary Envoy-internal attributes are also present: <code>upstream_cluster</code>, <code>node_id</code>, <code>response_flags</code>, <code>downstream_cluster</code>, and <code>component: "proxy"</code>. Metric names follow Prometheus underscore convention (<code>kgateway_controller_reconcile_duration_seconds</code>) rather than OTel dot notation. Log records have an empty body with no structured attributes.</p>
+
+                <h4>What's working well</h4>
+                <ul>
+                    <li>Trace-log correlation fields (<code>traceId</code>, <code>spanId</code>) are correctly placed in log records following the OTel log data model — this is a key semconv compliance win.</li>
+                    <li>The kgateway controller's <code>kgateway_*</code> metric names are consistent and operationally meaningful, even if they follow Prometheus rather than OTel naming conventions.</li>
+                </ul>
+
+                <h4>Opportunities</h4>
+                <div class="opportunity-box">
+                    <strong>Migrate to current HTTP semantic conventions</strong> — Envoy's OTel tracer currently uses deprecated HTTP attributes. Tracking Envoy's upstream semconv migration and contributing to it would bring <code>http.request.method</code>, <code>url.full</code>, and <code>http.response.status_code</code> (as integer) into kgateway's telemetry output.
+                </div>
+                <div class="opportunity-box">
+                    <strong>Populate OTel access log body and attributes</strong> — Envoy OTel ALS log records currently have an empty body (<code>{}</code>) and no log attributes. Including HTTP method, path, status code, and latency in the log body or attributes would make OTel access logs a first-class signal for request-level analysis.
+                </div>
+            </div>
+        </details>
+    </div>
+
+    <!-- 3. Resource Attributes & Configuration -->
+    <div class="dimension-section">
+        <details>
+            <summary>
+                <span class="level-badge level-1">1</span>
+                <span class="dim-title">Resource Attributes &amp; Configuration</span>
+                <span class="dim-summary">service.name present but inconsistent across signals; service.version absent; no OTEL_* env var support</span>
+                <span class="summary-arrow">▶</span>
+            </summary>
+            <div class="dim-content">
+                <h4>What we observed</h4>
+                <p>The Envoy data plane emits <code>service.name: kgateway-envoy.demo</code> in traces (configurable via <code>ListenerPolicy.tracing.serviceName</code>) but <code>service.name: demo-gateway.demo</code> in logs — a different value derived from Envoy's internal cluster name format for the same pod. This inconsistency breaks cross-signal correlation by service identity. The controller does not emit <code>service.name</code> natively; it is assigned by the Prometheus receiver in the collector as <code>kgateway-controller</code>. <code>service.version</code> is absent from all three signals. Standard <code>OTEL_*</code> environment variables (<code>OTEL_EXPORTER_OTLP_ENDPOINT</code>, <code>OTEL_SERVICE_NAME</code>, <code>OTEL_RESOURCE_ATTRIBUTES</code>) have no effect on kgateway's telemetry behavior — configuration is exclusively through kgateway CRDs and Helm values.</p>
+
+                <h4>What's working well</h4>
+                <ul>
+                    <li><code>service.name</code> is present and configurable in traces via <code>ListenerPolicy.tracing.serviceName</code> — operators have control over the trace identity.</li>
+                    <li><code>telemetry.sdk.name: envoy</code>, <code>telemetry.sdk.language: cpp</code>, and <code>telemetry.sdk.version</code> are correctly populated in trace resource attributes, identifying the underlying SDK.</li>
+                </ul>
+
+                <h4>Opportunities</h4>
+                <div class="opportunity-box">
+                    <strong>Align service.name across traces and logs</strong> — The Envoy proxy currently emits <code>service.name: kgateway-envoy.demo</code> in traces but <code>service.name: demo-gateway.demo</code> in logs for the same process. Ensuring both signals use the same configured service name would enable reliable cross-signal correlation by service identity.
+                </div>
+                <div class="opportunity-box">
+                    <strong>Add service.version to resource attributes</strong> — <code>service.version</code> is absent from all three signals. Adding the kgateway release version (e.g., <code>v2.2.4</code>) as a resource attribute would improve identity completeness and enable version-based filtering in observability backends.
+                </div>
+            </div>
+        </details>
+    </div>
+
+    <!-- 4. Trace Modeling & Context Propagation -->
+    <div class="dimension-section">
+        <details>
+            <summary>
+                <span class="level-badge level-2">2</span>
+                <span class="dim-title">Trace Modeling &amp; Context Propagation</span>
+                <span class="dim-summary">Coherent ingress/egress span tree; W3C Trace Context propagated end-to-end with confirmed backend correlation</span>
+                <span class="summary-arrow">▶</span>
+            </summary>
+            <div class="dim-content">
+                <h4>What we observed</h4>
+                <p>Each HTTP request through the Envoy gateway produces a well-structured trace tree: an <code>ingress</code> span (kind=SERVER) as the root, with a <code>router kube_demo_otel-eval-backend_3000 egress</code> span (kind=CLIENT) as its child, and the backend's <code>GET /</code> span correctly parented to the egress span. This three-level hierarchy accurately models the gateway's proxy role. W3C Trace Context (<code>traceparent</code> header) is injected by Envoy into upstream requests, and confirmed end-to-end: all spans share the same <code>traceId</code> (e.g., <code>d374625072e87cb0d55ddab5c20eca14</code>), and the backend's <code>GET /</code> span has <code>parentSpanId</code> matching the Envoy egress span's <code>spanId</code>. Upstream span generation requires <code>spawnUpstreamSpan: true</code> in <code>ListenerPolicy</code> — without it, only the <code>ingress</code> span is produced.</p>
+
+                <h4>What's working well</h4>
+                <ul>
+                    <li>W3C Trace Context propagation is confirmed end-to-end — the backend's spans are correctly parented to Envoy's egress span, enabling full distributed trace visibility across the gateway boundary.</li>
+                    <li>Span kinds are correctly assigned: <code>ingress</code> uses SERVER kind (entry-point listener) and <code>router ... egress</code> uses CLIENT kind (upstream connection) — accurately modeling the proxy's dual role.</li>
+                </ul>
+
+                <h4>Opportunities</h4>
+                <div class="opportunity-box">
+                    <strong>Enable spawnUpstreamSpan by default</strong> — Without <code>spawnUpstreamSpan: true</code> in <code>ListenerPolicy</code>, only the <code>ingress</code> span is generated — the proxy-to-backend connection is invisible in traces. Since kgateway exists specifically to forward requests, making upstream span generation the default would significantly improve out-of-the-box trace utility.
+                </div>
+                <div class="opportunity-box">
+                    <strong>Set schemaUrl in OTLP trace exports</strong> — OTLP trace exports currently have an empty <code>schemaUrl</code> field. Setting it to the appropriate OTel semconv schema URL (e.g., <code>https://opentelemetry.io/schemas/1.7.0</code> for the current attributes) would allow consumers to know which convention version is in use.
+                </div>
+            </div>
+        </details>
+    </div>
+
+    <!-- 5. Multi-Signal Observability -->
+    <div class="dimension-section">
+        <details>
+            <summary>
+                <span class="level-badge level-2">2</span>
+                <span class="dim-title">Multi-Signal Observability</span>
+                <span class="dim-summary">All three signals present and correlated; logs carry traceId/spanId matching trace spans</span>
+                <span class="summary-arrow">▶</span>
+            </summary>
+            <div class="dim-content">
+                <h4>What we observed</h4>
+                <p>All three signals are flowing and confirmed. Traces and logs use OTLP gRPC push from the Envoy data plane; metrics use Prometheus pull (controller on port 9092, Envoy proxy on port 9091). Trace-log correlation is confirmed with an exact match: log record <code>traceId=d374625072e87cb0d55ddab5c20eca14</code> and <code>spanId=565049b8d78c1488</code> exactly match the corresponding <code>ingress</code> trace span. Metrics confirm OTel pipeline health via <code>envoy_tracing_opentelemetry_spans_sent</code> and <code>envoy_access_logs_open_telemetry_access_log_logs_written</code> counters. The controller emits 21 <code>kgateway_*</code> metrics and the Envoy proxy emits 153+ <code>envoy_*</code> metrics. The controller's structured JSON logs (stdout) are not collected into the OTel pipeline — they remain in Kubernetes log streams only.</p>
+
+                <h4>What's working well</h4>
+                <ul>
+                    <li>Trace-log correlation is confirmed with an exact <code>traceId</code>/<code>spanId</code> match — operators can drill from an access log record directly to the corresponding trace span in supported backends.</li>
+                    <li>The official docs treat all three signals together in a single OTel integration guide, reflecting intentional multi-signal design rather than per-signal afterthoughts.</li>
+                </ul>
+
+                <h4>Opportunities</h4>
+                <div class="opportunity-box">
+                    <strong>Route controller logs into the OTel pipeline</strong> — The kgateway controller emits structured JSON logs to stdout, but these are not collected into the OTel pipeline. Forwarding controller logs via OTLP (or at minimum via the OTel Collector's filelog receiver) would complete the multi-signal picture for the control plane.
+                </div>
+                <div class="opportunity-box">
+                    <strong>Resolve service.name mismatch for trace-log correlation</strong> — While <code>traceId</code>/<code>spanId</code> correlation works, the <code>service.name</code> differs between traces (<code>kgateway-envoy.demo</code>) and logs (<code>demo-gateway.demo</code>) for the same Envoy proxy. Fixing this inconsistency would enable service-identity-based correlation in addition to trace-context-based correlation.
+                </div>
+            </div>
+        </details>
+    </div>
+
+    <!-- 6. Audience & Signal Quality -->
+    <div class="dimension-section">
+        <details>
+            <summary>
+                <span class="level-badge level-1">1</span>
+                <span class="dim-title">Audience &amp; Signal Quality</span>
+                <span class="dim-summary">Span names partially useful; Envoy-internal naming leaks into span names and attributes</span>
+                <span class="summary-arrow">▶</span>
+            </summary>
+            <div class="dim-content">
+                <h4>What we observed</h4>
+                <p>Envoy span names are <code>ingress</code> (the inbound listener span) and <code>router kube_demo_otel-eval-backend_3000 egress</code> (the upstream connection span). The <code>ingress</code> name carries no HTTP method or route context — unlike the OTel HTTP semconv recommendation of <code>{http.request.method} {http.route}</code> (e.g., <code>GET /</code>). The egress span name exposes Envoy's internal cluster naming format (<code>kube_&lt;namespace&gt;_&lt;service&gt;_&lt;port&gt;</code>). Log bodies are always empty (<code>{}</code>) — all access log data (HTTP method, path, status, latency) is absent from OTel log records. Several span attributes carry low-value data: <code>downstream_cluster: "-"</code>, <code>zone: ""</code>, <code>response_flags: "-"</code>. The kgateway controller metrics (<code>kgateway_translator_translations_total</code>, <code>kgateway_controller_reconcile_duration_seconds</code>) are well-named and operationally focused.</p>
+
+                <h4>What's working well</h4>
+                <ul>
+                    <li>The trace structure (<code>ingress</code> → <code>router ... egress</code> → backend) tells a coherent story of a request's journey through the gateway — interpretable even without deep Envoy knowledge.</li>
+                    <li>The kgateway controller's 21 <code>kgateway_*</code> metrics are operationally focused and well-named, covering reconciliation latency, XDS snapshot stats, and resource sync counts — useful for platform engineers.</li>
+                </ul>
+
+                <h4>Opportunities</h4>
+                <div class="opportunity-box">
+                    <strong>Improve span naming with request context</strong> — The <code>ingress</code> span name could include the HTTP method and route (e.g., <code>GET /api/v1</code>) to match OTel HTTP semconv recommendations. The egress span name could use a human-readable upstream service name instead of the Envoy cluster format <code>kube_demo_otel-eval-backend_3000</code>.
+                </div>
+                <div class="opportunity-box">
+                    <strong>Populate OTel access log body with request data</strong> — OTel access log records currently have an empty body (<code>{}</code>) and no log attributes. Adding HTTP method, path, status code, response time, and upstream address to the log body or attributes would make OTel access logs as useful as Envoy's traditional JSON access logs.
+                </div>
+            </div>
+        </details>
+    </div>
+
+    <!-- 7. Stability & Change Management -->
+    <div class="dimension-section">
+        <details>
+            <summary>
+                <span class="level-badge level-1">1</span>
+                <span class="dim-title">Stability &amp; Change Management</span>
+                <span class="dim-summary">Observability documented in official docs with OTel guide; no explicit telemetry stability contract or changelog sections</span>
+                <span class="summary-arrow">▶</span>
+            </summary>
+            <div class="dim-content">
+                <h4>What we observed</h4>
+                <p>kgateway has dedicated observability documentation at <code>/docs/envoy/latest/observability/otel-stack/</code>, <code>/docs/envoy/latest/observability/control-plane-metrics/</code>, and <code>/docs/envoy/latest/observability/gateway-metrics/</code>. The docs describe how to configure OTel telemetry but do not establish it as a stable contract. No schema URL is set in native OTLP exports for traces or logs (the <code>schemaUrl: https://opentelemetry.io/schemas/1.18.0</code> visible in metrics data is added by the OTel Collector's Prometheus receiver, not by kgateway). The v2.2.4 release notes contain no telemetry-specific change sections. There is no explicit stability classification for telemetry fields (stable vs. experimental), and no migration guidance for telemetry changes. The developer architecture docs (<code>devel/architecture/metrics.md</code>) describe internal metrics design but are contributor-facing, not a user-facing stability contract.</p>
+
+                <h4>What's working well</h4>
+                <ul>
+                    <li>Observability is treated as a first-class feature with dedicated documentation sections covering all three signals — a strong foundation for formalizing stability commitments.</li>
+                    <li>OTel is explicitly positioned as the recommended integration path in the official docs, giving operators a clear signal about the project's observability direction.</li>
+                </ul>
+
+                <h4>Opportunities</h4>
+                <div class="opportunity-box">
+                    <strong>Add telemetry change sections to release notes</strong> — Adding a dedicated "Telemetry changes" section to release notes would help operators who rely on specific metric names, span attribute names, or log formats to plan upgrades and avoid surprises when the telemetry schema evolves.
+                </div>
+                <div class="opportunity-box">
+                    <strong>Establish a telemetry stability contract</strong> — Explicitly labeling which telemetry fields are stable vs. experimental (in the docs or as code annotations), and setting <code>schemaUrl</code> in OTLP exports, would give operators confidence to build automation and dashboards on top of kgateway's telemetry without fear of silent breakage.
+                </div>
+            </div>
+        </details>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════ KEY TAKEAWAYS -->
+    <div class="card" style="margin-top: 32px;">
+        <div class="section-title">Key takeaways</div>
+        <div class="takeaways-grid">
+            <div class="takeaway-box strengths">
+                <h3>● Strengths</h3>
+                <ul>
+                    <li><strong>Multi-signal observability with confirmed trace-log correlation</strong> — All three signals flow, and log records carry exact <code>traceId</code>/<code>spanId</code> values matching the corresponding ingress trace spans — enabling drill-down from logs to traces in supported backends.</li>
+                    <li><strong>End-to-end W3C Trace Context propagation</strong> — Envoy injects <code>traceparent</code> headers into upstream requests, and the backend correctly continues the trace. The full <code>ingress → router egress → backend</code> trace tree is visible in a single trace, confirmed with real telemetry data.</li>
+                    <li><strong>Well-documented OTel integration path</strong> — The official docs have a dedicated "Set up the OpenTelemetry stack" guide covering all three signals with concrete configuration examples, positioning OTel as the recommended observability path.</li>
+                </ul>
+            </div>
+            <div class="takeaway-box improvements">
+                <h3>● Priority improvements</h3>
+                <ul>
+                    <li><strong>Migrate to current HTTP semantic conventions</strong> — Track Envoy's upstream semconv migration to replace deprecated <code>http.method</code>, <code>http.url</code>, <code>http.status_code</code> (as string) with current <code>http.request.method</code>, <code>url.full</code>, <code>http.response.status_code</code> (as integer).</li>
+                    <li><strong>Fix service.name inconsistency between traces and logs</strong> — The Envoy proxy emits <code>kgateway-envoy.demo</code> in traces but <code>demo-gateway.demo</code> in logs for the same pod. Aligning these to the same configured value would enable service-identity-based cross-signal correlation.</li>
+                    <li><strong>Populate OTel access log body with request data</strong> — Envoy OTel ALS log records have an empty body (<code>{}</code>) and no attributes. Including HTTP method, path, status code, and latency would make OTel access logs a first-class signal for request-level analysis.</li>
+                    <li><strong>Add OTLP metrics export path</strong> — Neither the kgateway controller nor the Envoy proxy currently supports OTLP metrics push. Adding an OTLP exporter to the controller would complete the integration surface and eliminate the Prometheus scrape dependency for metrics.</li>
+                </ul>
+            </div>
+        </div>
+        <div class="takeaway-box observations" style="margin-top: 16px;">
+            <h3>● Notable observations</h3>
+            <ul>
+                <li><strong>spawnUpstreamSpan is not the default</strong> — Without <code>spawnUpstreamSpan: true</code> in <code>ListenerPolicy</code>, only the <code>ingress</code> span is generated. The default should arguably be <code>true</code> for a proxy that exists specifically to forward requests upstream.</li>
+                <li><strong>Envoy metrics port is 9091, not the default 9901</strong> — kgateway's deployer overrides Envoy's default admin port (9901) with a custom stats endpoint at port 9091. This is automatically annotated on the pod and works correctly, but may surprise operators familiar with standard Envoy deployments.</li>
+                <li><strong>Metrics schemaUrl is collector-derived, not project-native</strong> — The <code>schemaUrl: https://opentelemetry.io/schemas/1.18.0</code> visible in metrics data is added by the OTel Collector's Prometheus receiver, not by kgateway. This gives an appearance of schema awareness that is collector-provided, not project-native.</li>
+            </ul>
+        </div>
+    </div>
+
+</div><!-- /container -->
+
+<footer class="site-footer">
+    <div class="footer-inner">
+        <span class="corner-flow">
+            <span class="node" style="background: var(--green)"></span>
+            <span class="line"></span>
+            <span class="node" style="background: var(--electric-bright)"></span>
+            <span class="line"></span>
+            <span class="node" style="background: var(--electric-glow)"></span>
+            <span style="margin-left: 4px">
+                evaluated · kgateway · <a href="https://github.com/kgateway-dev/kgateway">github.com/kgateway-dev/kgateway</a>
+            </span>
+        </span>
+        <span>Telemetry collected in kind cluster (otel-eval-kgateway) with OTel Collector file exporter · Generated by generate-otel-report v0.0.6</span>
+    </div>
+</footer>
+
+<script>
+    /*
+      Radar chart — colors track CSS custom properties so it adapts to theme toggles.
+      Score order must match labels exactly:
+        [Integration Surface, Semantic Conventions, Resource Attrs, Trace Modeling,
+         Multi-Signal, Audience & Quality, Stability & Change Mgmt]
+    */
+    const DIMENSION_SCORES = [
+        /* Integration Surface          */ 1,
+        /* Semantic Conventions         */ 0,
+        /* Resource Attrs & Config      */ 1,
+        /* Trace Modeling & Propagation */ 2,
+        /* Multi-Signal Observability   */ 2,
+        /* Audience & Signal Quality    */ 1,
+        /* Stability & Change Mgmt      */ 1,
+    ];
+
+    const PROJECT_LABEL = 'kgateway v2.2.4';
+
+    function readVar(name) {
+        return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    }
+
+    let radarChart;
+
+    function buildRadar(animate) {
+        const ctx = document.getElementById('radarChart').getContext('2d');
+        if (radarChart) radarChart.destroy();
+        radarChart = new Chart(ctx, {
+            type: 'radar',
+            data: {
+                labels: [
+                    ['Integration', 'Surface'],
+                    ['Semantic', 'Conventions'],
+                    ['Resource Attrs', '& Configuration'],
+                    ['Trace Modeling', '& Propagation'],
+                    ['Multi-Signal', 'Observability'],
+                    ['Audience &', 'Signal Quality'],
+                    ['Stability &', 'Change Mgmt']
+                ],
+                datasets: [{
+                    label: PROJECT_LABEL,
+                    data: DIMENSION_SCORES,
+                    backgroundColor: readVar('--chart-fill'),
+                    borderColor: readVar('--chart-line'),
+                    borderWidth: 2,
+                    pointBackgroundColor: readVar('--chart-point-bg'),
+                    pointBorderColor: readVar('--chart-point-border'),
+                    pointBorderWidth: 1.5,
+                    pointRadius: 4,
+                    pointHoverRadius: 6,
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                animation: animate ? { duration: 1400, easing: 'easeOutQuart' } : false,
+                scales: {
+                    r: {
+                        min: 0,
+                        max: 3,
+                        ticks: {
+                            stepSize: 1,
+                            callback: (v) => ['Instrumented', 'Aligned', 'Native', 'Optimized'][v] || v,
+                            font: { family: 'JetBrains Mono', size: 10 },
+                            color: readVar('--text-subtle'),
+                            backdropColor: 'transparent',
+                        },
+                        grid: { color: readVar('--chart-grid') },
+                        angleLines: { color: readVar('--chart-grid') },
+                        pointLabels: {
+                            font: { family: 'Inter', size: 12, weight: '500' },
+                            color: readVar('--chart-label'),
+                        }
+                    }
+                },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        backgroundColor: readVar('--bg-150'),
+                        titleColor: readVar('--text-intense'),
+                        bodyColor: readVar('--text-default'),
+                        borderColor: readVar('--border'),
+                        borderWidth: 1,
+                        padding: 10,
+                        titleFont: { family: 'Inter', weight: '600' },
+                        bodyFont: { family: 'JetBrains Mono', size: 11 },
+                        callbacks: {
+                            label: (ctx) => {
+                                const names = ['Instrumented', 'OTel-Aligned', 'OTel-Native', 'OTel-Optimized'];
+                                return ` Level ${ctx.raw} — ${names[ctx.raw]}`;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    buildRadar(true);
+
+    // ── Theme toggle ─────────────────────────────────────────────
+    const toggle = document.getElementById('theme-toggle');
+    toggle.addEventListener('click', () => {
+        const next = document.documentElement.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
+        document.documentElement.setAttribute('data-theme', next);
+        try { localStorage.setItem('theme', next); } catch (e) {}
+        buildRadar(false);
+    });
+</script>
+</body>
+</html>
