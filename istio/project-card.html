@@ -1,0 +1,90 @@
+<!--
+==============================================================================
+  PROJECT CARD TEMPLATE
+  Copy this entire block and paste it inside <div class="card-grid"> in
+  index-template.html. Replace every {{ PLACEHOLDER }} with real values.
+
+  SCORE VALUES: 0 · 1 · 2 · 3  (use the matching CSS class: score-0 … score-3)
+  SIGNAL STATUS classes on <span class="signal-dot ...">:
+    flowing  → green  (signal fully supported via OTLP or Prometheus)
+    partial  → orange (signal exists but incomplete / requires setup)
+    none     → grey   (signal not supported)
+==============================================================================
+-->
+
+<!-- Istio -->
+<a class="project-card" href="report.html">
+  <div class="card-inner">
+    <div class="card-content">
+
+      <!-- ── Top row: logo · name · version ── -->
+      <div class="card-top">
+        <img class="project-logo"
+             src="https://raw.githubusercontent.com/cncf/artwork/main/projects/istio/icon/color/istio-icon-color.svg"
+             alt="Istio">
+        <div class="project-name">Istio</div>
+        <span class="project-version">1.29.2</span>
+      </div>
+
+      <!-- ── Category tag + one-line description ── -->
+      <div class="card-meta">
+        <span class="category-tag">Service Mesh</span>
+        <span class="sep">&middot;</span>
+        <span class="card-desc">CNCF-graduated service mesh with OTLP traces, Prometheus metrics, and W3C context propagation via Envoy sidecars</span>
+      </div>
+
+      <!--
+        ── Score pills ──
+        Order: Integration · Semantics · Resources · Tracing · Multi-Signal · Quality · Stability
+        Set class to score-0, score-1, score-2, or score-3 for each dimension.
+      -->
+      <div class="score-pills">
+        <span class="score-pill score-2" title="Integration">2</span>
+        <span class="score-pill score-1" title="Semantics">1</span>
+        <span class="score-pill score-2" title="Resources">2</span>
+        <span class="score-pill score-3" title="Tracing">3</span>
+        <span class="score-pill score-1" title="Multi-Signal">1</span>
+        <span class="score-pill score-2" title="Quality">2</span>
+        <span class="score-pill score-1" title="Stability">1</span>
+      </div>
+
+      <!--
+        ── Signal pills ──
+        Add or remove <span> rows as needed. Typical set: Traces, Metrics, Logs.
+        dot class: flowing | partial | none
+      -->
+      <div class="card-signals">
+        <span class="signal-pill"><span class="signal-dot flowing"></span> Traces (OTLP gRPC)</span>
+        <span class="signal-pill"><span class="signal-dot partial"></span> Metrics (Prometheus scrape)</span>
+        <span class="signal-pill"><span class="signal-dot none"></span> Logs (stdout JSON only)</span>
+      </div>
+
+      <div class="view-report">View report <span class="arrow">&rarr;</span></div>
+    </div>
+
+    <!-- ── Radar chart ── -->
+    <div class="card-chart">
+      <div class="mini-chart">
+        <canvas id="chart-istio"></canvas>
+      </div>
+    </div>
+  </div>
+</a>
+
+<!--
+  Register chart scores for this card.
+  Place this <script> block right after the <a> tag above (or collect all
+  registerChart() calls in a single <script> at the bottom of the file).
+  Score order: Integration, Semantics, Resources, Tracing, Multi-Signal, Quality, Stability
+-->
+<script>
+registerChart('chart-istio', [
+  2,   // Integration
+  1,   // Semantics
+  2,   // Resources
+  3,   // Tracing
+  1,   // Multi-Signal
+  2,   // Quality
+  1    // Stability
+]);
+</script>

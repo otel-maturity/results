@@ -1,0 +1,24 @@
+# istio/gateway chart values for Istio 1.29.2
+# Deploys an ingress gateway in the istio-ingress namespace
+
+name: istio-ingressgateway
+
+service:
+  type: NodePort
+  ports:
+    - name: http2
+      port: 80
+      targetPort: 8080
+      nodePort: 30080
+    - name: https
+      port: 443
+      targetPort: 8443
+      nodePort: 30443
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 128Mi
+  limits:
+    cpu: 200m
+    memory: 256Mi

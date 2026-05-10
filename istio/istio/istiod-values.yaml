@@ -1,0 +1,49 @@
+# istiod chart values for Istio 1.29.2
+# Configures control plane with OTLP tracing to the OTel Collector
+
+pilot:
+  traceSampling: 100.0
+  resources:
+    requests:
+      cpu: 100m
+      memory: 512Mi
+    limits:
+      memory: 1024Mi
+
+meshConfig:
+  enablePrometheusMerge: true
+
+  # OTLP extension provider for traces
+  extensionProviders:
+    - name: otel-tracing
+      opentelemetry:
+        service: otel-collector-opentelemetry-collector.opentelemetry.svc.cluster.local
+        port: 4317
+
+  # Default trace provider for the whole mesh
+  defaultProviders:
+    tracing:
+      - otel-tracing
+
+  # Access logs to stdout (not OTLP — standard Istio behavior)
+  accessLogFile: /dev/stdout
+  accessLogEncoding: JSON
+
+global:
+  hub: docker.io/istio
+  tag: "1.29.2"
+  proxy:
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+      limits:
+        cpu: 200m
+        memory: 256Mi
+
+telemetry:
+  enabled: true
+  v2:
+    enabled: true
+    prometheus:
+      enabled: true
