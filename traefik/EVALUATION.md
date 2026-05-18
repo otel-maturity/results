@@ -2,12 +2,13 @@
 
 ## Project overview
 
-- **Project**: Traefik — cloud-native HTTP reverse proxy and Kubernetes Ingress controller
-- **Version evaluated**: v3.7.0 (Helm chart 40.0.0)
-- **Evaluation date**: 2026-05-09
+- **Project**: Traefik — cloud-native HTTP reverse proxy and Kubernetes Ingress controller (CNCF Incubating)
+- **Version evaluated**: v3.7.1 (Helm chart `traefik/traefik` v40.2.0)
+- **Evaluation date**: 2026-05-18
+- **Evaluation run version**: v1
 - **Cluster**: otel-eval-traefik (kind)
 - **Maturity model version**: OpenTelemetry Support Maturity Model for CNCF Projects (draft)
-- **Skill version**: evaluate-otel-maturity v0.0.2
+- **Skill version**: evaluate-otel-maturity v0.0.3
 
 ---
 
@@ -15,13 +16,13 @@
 
 | Dimension | Level | Summary |
 |-----------|-------|---------|
-| Integration Surface | 2 | OTLP is a first-class, well-documented path; Prometheus scrape remains co-equal |
-| Semantic Conventions | 2 | Trace spans use current semconv; Prometheus metrics use legacy labels; access log attributes are Traefik-native CamelCase |
-| Resource Attributes & Configuration | 2 | Rich native resource attributes; `OTEL_RESOURCE_ATTRIBUTES` documented and respected; `service.instance.id` absent natively |
-| Trace Modeling & Context Propagation | 2 | W3C Trace Context propagation confirmed; intentional SERVER/CLIENT span kinds; span names are HTTP-method-only (not route-templated) |
-| Multi-Signal Observability | 2 | All three signals flow via OTLP; access logs carry trace/span IDs; OTLP logs remain behind an experimental feature gate |
-| Audience & Signal Quality | 1 | Trace and metrics signals are operator-ready; access log attribute schema is Traefik-native (not OTel semconv); `level: panic` body quirk for all access logs |
-| Stability & Change Management | 1 | OTel changes appear in changelog; no formal telemetry stability contract; OTLP logs still experimental; no schema URL on traces |
+| Integration Surface | 2 | OTLP gRPC is the primary path for all three signals; Prometheus scrape remains as a parallel option |
+| Semantic Conventions | 1 | Traces use current OTel HTTP semconv; `traefik_*` metrics use proprietary labels (`code`, `method`, `protocol`); log attributes use PascalCase proprietary names |
+| Resource Attributes & Configuration | 2 | Rich native resource identity (`service.name`, `service.version`, `telemetry.sdk.*`, `process.*`, `os.*`); no `service.instance.id` on traces/OTLP metrics |
+| Trace Modeling & Context Propagation | 1 | All spans are flat SERVER spans with no child spans; W3C traceparent propagation confirmed; span name is bare `GET` without route |
+| Multi-Signal Observability | 1 | All three signals flow via OTLP; access log trace correlation present but application logs lack `severityText`; signals are not yet designed as a correlated system |
+| Audience & Signal Quality | 1 | Trace span names are bare HTTP method (`GET`); access log body is a JSON string (not structured); `severityText` missing from application logs; `entry_point` attribute adds useful context |
+| Stability & Change Management | 1 | Telemetry changes mentioned in changelogs informally; OTLP log export still behind experimental feature gate; no explicit stability guarantees or migration guides for telemetry |
 
 ---
 
@@ -29,40 +30,43 @@
 
 ### Signals observed
 
-- **Traces**: Flowing — OTLP gRPC push to collector
-- **Metrics (OTLP)**: Flowing — OTLP gRPC push to collector (10 s interval)
-- **Metrics (Prometheus)**: Flowing — Prometheus scrape by collector (15 s interval)
-- **Logs (access)**: Flowing — OTLP gRPC push to collector (requires `experimental.otlpLogs: true`)
-- **Logs (general/application)**: Flowing — OTLP gRPC push to collector (same experimental gate)
+- **Traces**: Flowing — OTLP gRPC push, native OTel Go SDK (`github.com/traefik/traefik`)
+- **Metrics**: Flowing — OTLP gRPC push (native) + Prometheus scrape (via collector)
+- **Logs**: Flowing — OTLP gRPC push (experimental feature gate), scope `traefik vunknown`
 
 ### Resource attributes (native, before collector enrichment)
 
-Traefik sets these resource attributes natively via the OTel Go SDK:
+Traefik emits these natively via the OTel Go SDK on traces and OTLP metrics:
 
-| Attribute | Example value |
-|---|---|
+| Attribute | Value (example) |
+|-----------|-----------------|
 | `service.name` | `traefik` |
-| `service.version` | `3.7.0` |
+| `service.version` | `3.7.1` |
 | `telemetry.sdk.name` | `opentelemetry` |
 | `telemetry.sdk.language` | `go` |
 | `telemetry.sdk.version` | `1.43.0` |
-| `host.name` | `traefik-599d5c8d5-d4vnb` (pod name) |
+| `host.name` | `traefik-577cd8ff58-sszqj` (pod name) |
 | `os.type` | `linux` |
-| `os.description` | `Alpine Linux 3.23.4 (Linux …)` |
+| `os.description` | `Alpine Linux 3.23.4 (Linux ...)` |
 | `process.pid` | `1` |
 | `process.executable.name` | `traefik` |
 | `process.executable.path` | `/usr/local/bin/traefik` |
 | `process.owner` | `traefik` |
 | `process.runtime.name` | `go` |
-| `process.runtime.version` | `go1.25.9` |
-| `process.runtime.description` | `go version go1.25.9 linux/amd64` |
-| `process.command_args` | full CLI args array |
+| `process.runtime.version` | `go1.25.10` |
+| `process.runtime.description` | Full Go version string |
+| `process.command_args` | Full CLI args array |
 
-**Note**: Traefik also natively detects and sets Kubernetes resource attributes (`k8s.namespace.name`, `k8s.pod.name`, `k8s.pod.uid`, `k8s.deployment.name`, etc.) via a built-in K8s resource detector introduced in recent v3 releases (PR #11906). These appear in the raw OTLP payloads before any collector enrichment. The k8sattributes processor in the collector adds additional label and annotation attributes on top.
+**Note**: `service.instance.id` is absent from traces and OTLP metrics. It is present only in Prometheus-scraped metrics (collector-derived, set to `traefik-metrics.traefik.svc.cluster.local:9100`).
 
 ### Resource attributes (after collector enrichment)
 
-The k8sattributes processor added: `k8s.pod.label.*`, `k8s.pod.annotation.*`, `k8s.replicaset.name`, `k8s.replicaset.uid`, `k8s.deployment.uid`, `k8s.node.uid`.
+The k8sattributes processor added:
+- `k8s.namespace.name`, `k8s.pod.name`, `k8s.pod.uid`, `k8s.pod.start_time`
+- `k8s.deployment.name`, `k8s.replicaset.name`, `k8s.node.name`, `k8s.container.name`
+- `k8s.pod.label.*`, `k8s.pod.annotation.*`
+
+Schema URL present on traces and logs: `https://opentelemetry.io/schemas/1.40.0`
 
 ---
 
@@ -74,102 +78,106 @@ The k8sattributes processor added: `k8s.pod.label.*`, `k8s.pod.annotation.*`, `k
 
 #### Evidence
 
-- All three signals (traces, metrics, logs) support OTLP gRPC and OTLP HTTP export natively in Traefik v3.
-- Traces are configured via `tracing.otlp.grpc` or `tracing.otlp.http`. OTLP is the **only** supported tracing export path in v3 — legacy Jaeger/Zipkin/Datadog exporters still exist for traces but are separate backend configurations, not the default.
-- Metrics support both OTLP push (`metrics.otlp`) and Prometheus scrape (`metrics.prometheus`) simultaneously. Prometheus is the historical default and remains equally prominent in documentation.
-- OTLP log export works for both access logs and general logs via `experimental.otlpLogs: true` feature gate.
-- Documentation at `doc.traefik.io` clearly describes OTLP as the recommended path for tracing. The Helm chart has first-class `tracing.otlp` and `metrics.otlp` value keys.
-- Confirmed: Traefik connects directly to an existing OTel Collector on port 4317 with zero custom adapters or sidecars.
+Traefik v3.7.1 supports OTLP gRPC natively for all three signals. The configuration is explicit and direct:
+
+- **Traces**: `--tracing.otlp.grpc.endpoint` — OTLP gRPC push, no adapters required
+- **Metrics**: `--metrics.otlp.grpc.endpoint` — OTLP gRPC push; Prometheus scrape endpoint also available in parallel
+- **Logs**: `--accesslog.otlp.grpc.endpoint` and `--log.otlp.grpc.endpoint` — OTLP gRPC push (behind `--experimental.otlpLogs=true`)
+
+The process command args in the telemetry data confirm all three OTLP endpoints are configured identically, pointing to the same collector endpoint. The collector received data on all three signal pipelines without any adapters or sidecars.
+
+Prometheus scraping remains as a parallel option (not deprecated), which is a practical concession to existing Prometheus-based stacks. Prometheus is documented alongside OTLP but is not the primary recommended path for new deployments.
 
 #### Checklist assessment
 
-- ✅ OTLP export is supported for all three signals
+- ✅ OTLP is supported natively for traces, metrics, and logs
 - ✅ Users can connect to an existing OTel Collector without adapters
-- ✅ Configuration is consistent across traces, metrics, and logs (all use `*.otlp.grpc.*` pattern)
-- ✅ OTel Go SDK is used natively — not a wrapper or bridge
-- ⚠️ Prometheus scrape remains co-equal with OTLP push for metrics — not clearly secondary
-- ⚠️ OTLP log export requires `experimental.otlpLogs: true` — not yet a stable, default path
-- ⚠️ Telemetry integration is not yet documented as a versioned, stable contract (no migration guides for telemetry-specific changes)
+- ✅ Configuration is done via Traefik-specific flags (not `OTEL_*` env vars — see Resource Attributes dimension)
+- ✅ Prometheus scraping remains available but is secondary
+- ⚠️ OTLP log export requires `--experimental.otlpLogs=true` feature gate (not yet stable)
+- ✅ All signals flow to the same collector endpoint without custom glue code
 
 #### Rationale
 
-Traefik v3 fully supports OTLP across all signals and integrates cleanly into OTel pipelines. The project "speaks OpenTelemetry" fluently. However, Prometheus metrics remain a co-equal first-class option (not clearly deprecated), and OTLP log export is still experimental. This places the project solidly at Level 2 — OTel is the primary integration surface for traces, and increasingly so for metrics and logs, but the integration surface is not yet explicitly governed as a stable contract (Level 3 would require that).
+OTLP is the primary and recommended integration surface for all three signals. The project integrates cleanly with existing OTel Collectors. Legacy Prometheus support coexists but is clearly a compatibility option. The experimental feature gate on logs is a minor caveat that does not prevent OTLP from being the primary path. This is solidly Level 2.
 
 ---
 
 ### 2. Semantic Conventions
 
-**Level: 2 — OpenTelemetry-Native**
+**Level: 1 — OpenTelemetry-Aligned**
 
 #### Evidence
 
 ##### Trace attributes
 
-Traefik v3 uses **current, stable OTel HTTP semantic conventions** on spans:
+Trace spans use current OTel HTTP semantic conventions for server spans:
 
-| Attribute | Used | Notes |
-|---|---|---|
-| `http.request.method` | ✅ | Current semconv (not deprecated `http.method`) |
-| `http.response.status_code` | ✅ | Current semconv (not deprecated `http.status_code`) |
-| `url.path` | ✅ | Current semconv (not deprecated `http.target`) |
-| `url.full` | ✅ | Used on CLIENT spans (ReverseProxy) |
-| `url.scheme` | ✅ | Current semconv |
-| `url.query` | ✅ | Current semconv |
-| `user_agent.original` | ✅ | Current semconv |
-| `server.address` | ✅ | Current semconv |
-| `server.port` | ✅ | Current semconv |
-| `network.peer.address` | ✅ | Current semconv |
-| `network.peer.port` | ✅ | Current semconv |
-| `network.protocol.version` | ✅ | Current semconv |
-| `client.address` | ✅ | Current semconv |
-| `client.port` | ✅ | Current semconv |
-| `http.request.body.size` | ✅ | Current semconv |
-| `entry_point` | ⚠️ | Traefik-specific, not in OTel semconv — identifies the Traefik entrypoint (e.g., `web`, `traefik`) |
+| Attribute | Status |
+|-----------|--------|
+| `http.request.method` | ✅ Current semconv |
+| `http.response.status_code` | ✅ Current semconv |
+| `url.path` | ✅ Current semconv |
+| `url.query` | ✅ Current semconv |
+| `url.scheme` | ✅ Current semconv |
+| `server.address` | ✅ Current semconv |
+| `network.protocol.version` | ✅ Current semconv |
+| `network.peer.address` | ✅ Current semconv |
+| `network.peer.port` | ✅ Current semconv |
+| `client.address` | ✅ Current semconv |
+| `user_agent.original` | ✅ Current semconv |
+| `entry_point` | ⚠️ Traefik-specific, not in OTel semconv |
+| `http.request.body.size` | ⚠️ Not in stable OTel semconv |
+| `client.port` | ⚠️ Not in stable OTel semconv |
 
-No deprecated attributes (`http.method`, `http.status_code`, `http.target`, `http.url`, `http.flavor`, `net.host.*`, `net.peer.*`) were observed on Traefik's own spans.
+No deprecated attributes (`http.method`, `http.status_code`, `http.target`, `http.url`) were found in traces. The schema URL `https://opentelemetry.io/schemas/1.40.0` is set on trace exports.
 
-Source confirms: `semconv "go.opentelemetry.io/otel/semconv/v1.26.0"` is used in the tracing implementation.
+**Span name**: All spans are named `GET` (bare HTTP method). Per OTel HTTP semconv, the recommended span name is `{method} {http.route}` or `{method}` when route is unknown. Since Traefik knows the route (from `entry_point` and routing config), the span name `GET` is technically compliant but suboptimal — it lacks the route component that would make spans distinguishable.
+
+**Missing**: `http.route` attribute is absent from all spans. This is a notable gap for an ingress controller that has full routing context.
 
 ##### Metric names and attributes
 
-Two metric naming conventions are in use simultaneously:
+Two metric families coexist:
 
-**OTLP push (OTel semconv):**
-- `http.server.request.duration` (histogram) — current OTel HTTP semconv metric
-- `http.client.request.duration` (histogram) — current OTel HTTP semconv metric
-- Attributes: `http.request.method`, `http.response.status_code`, `url.scheme`, `server.address`, `network.protocol.name`, `network.protocol.version` — all current semconv
+**OTel semconv metrics** (from `github.com/traefik/traefik` OTLP scope):
+- `http.server.request.duration` — histogram with `http.request.method`, `http.response.status_code`, `network.protocol.name`, `network.protocol.version`, `server.address`, `url.scheme` ✅
+- `http.client.request.duration` — histogram with same attributes ✅
 
-**Prometheus scrape (Traefik-native naming):**
-- `traefik_entrypoint_requests_total`, `traefik_entrypoint_request_duration_seconds`, etc.
-- Attributes: `code`, `entrypoint`, `method`, `protocol`, `router`, `service` — Traefik-specific labels, not OTel semconv
+**Traefik-proprietary metrics** (from both OTLP and Prometheus scrape):
+- `traefik_entrypoint_requests_total` — uses `code`, `method`, `protocol`, `entrypoint` ❌ non-semconv
+- `traefik_entrypoint_request_duration_seconds` — same non-semconv labels ❌
+- `traefik_router_requests_total` — uses `code`, `method`, `protocol`, `router`, `service` ❌ non-semconv
+- `traefik_service_requests_total` — uses `code`, `method`, `protocol`, `service` ❌ non-semconv
 
-The Prometheus metrics use `code` (not `http.response.status_code`), `method` (not `http.request.method`), and `protocol` (not `network.protocol.name`). This is a semantic inconsistency between the two metrics paths.
+The `traefik_*` metrics use short-form labels (`code`, `method`, `protocol`) instead of OTel semconv (`http.response.status_code`, `http.request.method`, `network.protocol.name`). These metrics are present in both the OTLP push and Prometheus scrape paths — the non-semconv naming is not just a Prometheus legacy issue.
 
 ##### Log attributes
 
-Access log attributes use **Traefik-native CamelCase schema**, not OTel semantic conventions:
+Access log records use PascalCase proprietary field names as log attributes:
+- `ClientAddr`, `ClientHost`, `ClientPort` — not OTel semconv
+- `DownstreamStatus`, `DownstreamContentSize` — not OTel semconv
+- `RequestMethod`, `RequestPath`, `RequestProtocol` — not OTel semconv
+- `RouterName`, `ServiceName`, `entryPointName` — traefik-specific
+- `TraceId`, `SpanId` (PascalCase) AND `trace_id`, `span_id` (snake_case) — duplicated, non-standard naming
 
-- `RequestMethod`, `RequestPath`, `RequestProtocol`, `DownstreamStatus`, `RouterName`, `ServiceName`, `ServiceAddr`, `KubernetesIngressName`, `Duration`, `Overhead`, etc.
-- Trace context is present via both `TraceId`/`SpanId` (CamelCase) and `trace_id`/`span_id` (snake_case) — duplicated in both the log attributes and embedded in the JSON body string.
-- The OTLP `traceId` and `spanId` fields are correctly populated.
-- Log severity is `info` (severityNumber=9) for all access log records — correct for normal requests.
+The log body is a JSON string (the full access log line), not a structured OTel log body. Log attributes mirror the JSON body fields — a redundant pattern.
 
-The log attribute schema does not use OTel semantic conventions (`http.request.method`, `url.path`, etc.) — it uses the Traefik-native access log field names.
+Application logs have `severityNumber` set (9=INFO, 13=WARN) but `severityText` is `null` for all application log records. Only the single access log record has `severityText: "info"`.
 
 #### Checklist assessment
 
-- ✅ Current OTel HTTP semconv used on all trace spans (no deprecated `http.method`, `http.status_code`, etc.)
-- ✅ OTLP metrics use OTel semconv metric names and attribute keys
-- ✅ Span kinds are correct: SERVER (kind=2) for entry-point spans, CLIENT (kind=3) for ReverseProxy spans
-- ⚠️ Prometheus metrics use Traefik-native label names (`code`, `method`, `protocol`) — inconsistent with trace attributes
-- ⚠️ Access log attributes use Traefik-native CamelCase schema — not OTel semconv
-- ⚠️ `entry_point` span attribute is Traefik-specific with no documented mapping to OTel conventions
-- ⚠️ Instrumentation scope version is `vunknown` on traces (scope name is `github.com/traefik/traefik` but no version set)
-- ⚠️ No `http.route` attribute on server spans — the route template is not exposed, only the method
+- ✅ Current OTel HTTP semconv used in traces (no deprecated `http.method`, `http.status_code`)
+- ✅ `http.server.request.duration` and `http.client.request.duration` use semconv labels
+- ❌ `traefik_*` metrics use non-semconv labels (`code`, `method`, `protocol`)
+- ❌ Log attributes use proprietary PascalCase names, not OTel log semconv
+- ❌ `http.route` absent from spans (known routing context not exposed)
+- ⚠️ `entry_point` is a traefik-domain concept not documented as a semconv extension
+- ❌ `severityText` absent from application log records
 
 #### Rationale
 
-Traefik's trace spans are an excellent example of current OTel semconv adoption — all HTTP attributes use the latest stable conventions with no deprecated fields. The OTLP metrics also use OTel semconv names. However, the Prometheus metrics path uses Traefik-native attribute names, and the access log schema is entirely Traefik-native. The inconsistency between signals prevents Level 3. Level 2 is appropriate: conventions are applied consistently and deliberately on traces, and OTel semconv metrics are present, but the Prometheus label schema and log attribute schema are not aligned.
+Traces are well-aligned with current OTel HTTP semconv. However, the `traefik_*` metric family (which covers the bulk of operational metrics) uses proprietary labels inconsistent with OTel semconv. Log attributes use a proprietary schema with no mapping to OTel conventions. The mix of semconv and non-semconv naming across signals is characteristic of Level 1: partial adoption with remaining inconsistencies.
 
 ---
 
@@ -181,144 +189,139 @@ Traefik's trace spans are an excellent example of current OTel semconv adoption 
 
 ##### Native resource attributes
 
-Traefik sets a rich set of resource attributes natively via the OTel Go SDK's automatic resource detection:
+Traefik emits a rich set of resource attributes natively via the OTel Go SDK:
 
-- **Service identity**: `service.name=traefik`, `service.version=3.7.0` — consistent across traces, metrics, and logs
-- **SDK info**: `telemetry.sdk.name`, `telemetry.sdk.language`, `telemetry.sdk.version`
-- **Process info**: `process.pid`, `process.executable.name`, `process.executable.path`, `process.owner`, `process.runtime.name`, `process.runtime.version`, `process.runtime.description`, `process.command_args`
-- **OS info**: `os.type`, `os.description`
-- **Host info**: `host.name` (set to pod name)
-- **Kubernetes info** (natively detected, not collector-derived): `k8s.namespace.name`, `k8s.pod.name`, `k8s.pod.uid`, `k8s.deployment.name`, `k8s.container.name`, `k8s.node.name`, `k8s.replicaset.name`
+- `service.name: traefik` — stable, consistent across all signals
+- `service.version: 3.7.1` — present on traces, OTLP metrics, and logs
+- `telemetry.sdk.*` — name, language, version all set correctly
+- `process.*` — pid, executable name/path, owner, runtime name/version/description, command_args
+- `os.*` — os.type, os.description
 
-The Kubernetes attributes are set natively by Traefik's built-in K8s resource detector (PR #11906 in v3.x). This is a notable strength — Traefik does not require the collector's k8sattributes processor for basic K8s identity.
+These attributes are present on traces, OTLP metrics, and logs — consistent across all three signal types.
 
-**Missing**: `service.instance.id` is not set natively. The pod UID is available as `k8s.pod.uid` but is not mapped to `service.instance.id`.
+**Gap**: `service.instance.id` is absent from traces and OTLP metrics. In Prometheus-scraped metrics, the collector sets `service.instance.id: traefik-metrics.traefik.svc.cluster.local:9100` (a scrape-target-derived value, not from Traefik itself). In a multi-replica deployment, this means traces from different Traefik instances cannot be distinguished by instance identity.
 
 ##### OTEL_* environment variable support
 
-Documentation at `doc.traefik.io` explicitly states: "Traefik also supports the `OTEL_RESOURCE_ATTRIBUTES` env variable to set up the resource attributes." This is confirmed as a documented, supported mechanism.
-
-Configuration uses Traefik-native CLI flags/config file options (`tracing.otlp.grpc.endpoint`, `metrics.otlp.grpc.endpoint`) rather than `OTEL_EXPORTER_OTLP_ENDPOINT`. The OTel standard env vars are not the primary configuration mechanism for export endpoints — Traefik has its own config path.
+Traefik uses its own configuration flags (`--tracing.otlp.grpc.endpoint`, `--metrics.otlp.grpc.endpoint`, etc.) rather than standard `OTEL_EXPORTER_OTLP_ENDPOINT` environment variables. The OTel Go SDK is used internally, but the configuration surface is Traefik-specific. This is a design choice — the Helm chart provides a clean configuration path but it is not the standard `OTEL_*` variable approach.
 
 ##### Identity consistency across signals
 
-`service.name=traefik` and `service.version=3.7.0` are consistent across all three signals (traces, metrics via OTLP, logs). The metrics scope for Traefik's OTLP push correctly reports `github.com/traefik/traefik v3.7.0`.
+`service.name: traefik` and `service.version: 3.7.1` are consistent across traces, OTLP metrics, and logs. The `telemetry.sdk.*` attributes are also consistent. The `host.name` (pod name) is present on all signals.
 
 #### Checklist assessment
 
-- ✅ `service.name` and `service.version` are stable and consistent across all signals
-- ✅ Rich process, OS, host, and Kubernetes resource attributes set natively
-- ✅ `OTEL_RESOURCE_ATTRIBUTES` is documented and supported
-- ✅ Identity is correct across traces, metrics, and logs
-- ⚠️ `service.instance.id` is not set natively (pod UID exists as `k8s.pod.uid` but not mapped)
-- ⚠️ Export endpoint is configured via Traefik-native flags (`tracing.otlp.grpc.endpoint`), not `OTEL_EXPORTER_OTLP_ENDPOINT`
-- ⚠️ Resource attribute behavior is not formally documented as a stable contract with migration guidance
+- ✅ `service.name` is stable and consistent across all signals
+- ✅ `service.version` is present and consistent
+- ✅ `telemetry.sdk.*` attributes correctly set
+- ✅ Rich process and OS resource attributes emitted natively
+- ❌ `service.instance.id` absent from traces and OTLP metrics
+- ⚠️ Configuration uses Traefik-specific flags rather than `OTEL_*` env vars
+- ✅ Identity is stable across restarts and scaling (pod name in `host.name`)
 
 #### Rationale
 
-Traefik provides excellent native resource attribution — service identity, process info, OS info, and even Kubernetes metadata are all set at the source. `OTEL_RESOURCE_ATTRIBUTES` is documented. The main gaps are the absence of `service.instance.id` and the use of Traefik-native config paths rather than standard `OTEL_*` env vars for export endpoints. Level 2 is appropriate: resource identity is stable and consistent, but configuration precedence is not fully documented and `OTEL_EXPORTER_OTLP_ENDPOINT` is not respected.
+The core identity attributes (`service.name`, `service.version`, `telemetry.sdk.*`) are correctly set natively and consistently across all signals. The project satisfies the Level 2 requirement for stable resource identity. The absence of `service.instance.id` on traces is a gap but not disqualifying for Level 2, as Kubernetes pod identity is available via `host.name` (which equals the pod name) and is enriched by k8sattributes. Configuration uses project-specific flags rather than `OTEL_*` vars, which is consistent with Level 2 (the project has a coherent configuration surface, just not the standard env var path).
 
 ---
 
 ### 4. Trace Modeling & Context Propagation
 
-**Level: 2 — OpenTelemetry-Native**
+**Level: 1 — OpenTelemetry-Aligned**
 
 #### Evidence
 
 ##### Span structure
 
-Observed span types from Traefik:
+All 235 spans in the traces data are:
+- Kind: `SERVER` (kind=2) ✅
+- Name: `GET` (bare HTTP method, no route) ⚠️
+- Parent: none (all root spans) ⚠️
 
-| Span name | Kind | Description |
-|---|---|---|
-| `GET` | SERVER (kind=2) | Entry-point span — one per incoming HTTP request |
-| `ReverseProxy` | CLIENT (kind=3) | Upstream backend call span |
+There are **no child spans** or **CLIENT spans** in the trace data. Traefik creates a SERVER span for each incoming request but does not create a CLIENT span for the backend call. This means:
+- A request through Traefik produces a single span
+- The backend service's spans (if any) are independent traces, not children of the Traefik span
 
-Traefik v3 produces a clean two-level trace structure for proxied requests:
-1. A SERVER span named `GET` (or the HTTP method) representing the inbound request at the entrypoint
-2. A CLIENT span named `ReverseProxy` as a child, representing the outbound call to the backend
-
-The backend (otel-eval-backend) then creates its own child spans (`GET /`, `GET /health`, `request handler - /`, `middleware - query`, etc.) continuing the same trace.
-
-When `tracing.addInternals: true` is set, internal routes (ping, dashboard) also produce spans.
-
-**Span naming observation**: The root SERVER span is named only with the HTTP method (`GET`), not with a route template. There is no `http.route` attribute. For an ingress controller handling many different routes, this means all inbound requests produce spans named `GET` — making it impossible to distinguish routes in a trace waterfall without inspecting `url.path`. This is a known limitation and is a design choice (route templates are in the router/service labels).
+This is architecturally significant: Traefik propagates the W3C traceparent header to the backend (confirmed in the INSTALL-PLAN notes), so the backend can continue the same trace. However, Traefik itself does not create a child CLIENT span for the upstream call. The trace tree is thus incomplete from Traefik's perspective — the "hop" through Traefik is visible as a SERVER span, but the backend call is not represented as a child.
 
 ##### Context propagation
 
-W3C Trace Context (`traceparent`/`tracestate`) propagation is confirmed working:
-
-- When an incoming request carries `traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01`, Traefik correctly creates a child SERVER span with `parentSpanId=00f067aa0ba902b7` — preserving the same trace ID and creating a new span ID.
-- The ReverseProxy CLIENT span is a child of the SERVER span, with the correct `parentSpanId`.
-- The backend receives the updated `traceparent` and continues the trace, with its spans appearing as children of Traefik's CLIENT span.
-- Verified in telemetry: spans from `otel-eval-backend` have `parentSpanId` values that match Traefik's ReverseProxy span IDs.
+W3C Trace Context propagation is confirmed:
+- Traefik reads incoming `traceparent` headers
+- Creates a new SERVER span with the incoming trace ID
+- Injects updated `traceparent` into the upstream request
+- The `entry_point` attribute on spans shows the named entrypoint (`traefik`, `web`, `metrics`)
 
 ##### Trace coherence
 
-The trace structure tells a coherent story: `[external] → GET (Traefik SERVER) → ReverseProxy (Traefik CLIENT) → GET / (backend SERVER) → [middleware spans]`. Parent-child relationships are correct throughout.
+Traces are flat (single span per request). For an ingress controller, this is a reasonable design — the proxy itself is one hop. However, the absence of CLIENT spans for backend calls means there is no visibility into the backend call latency as seen by Traefik. The span name `GET` without route information makes it impossible to distinguish spans for different routes without inspecting `url.path`.
 
 #### Checklist assessment
 
-- ✅ W3C Trace Context propagation is correctly implemented and verified
+- ✅ W3C Trace Context propagation supported and working
 - ✅ Entry-point spans are consistently SERVER spans (kind=2)
-- ✅ Backend proxy calls are consistently CLIENT spans (kind=3)
-- ✅ Correct parent-child relationships across Traefik and backend
-- ✅ Sampling decision (`ParentBased` sampler) respects incoming trace context
-- ⚠️ Span names are HTTP method only (`GET`) — no route template or `http.route` attribute
-- ⚠️ Instrumentation scope version is `vunknown` — scope name is set but version is missing
-- ⚠️ No documented trace modeling design decisions or architecture docs
+- ❌ No CLIENT spans for backend calls — the upstream call is not represented
+- ❌ Span name is bare `GET` — `http.route` absent, making spans indistinguishable by route
+- ✅ Context is propagated to backends (traceparent forwarded)
+- ⚠️ Traces are flat — no parent-child relationships within Traefik's own trace tree
 
 #### Rationale
 
-Traefik's trace modeling is intentional and correct for its role as a proxy. W3C Trace Context propagation works end-to-end, span kinds are correct, and the parent-child structure is coherent. The main limitation is that span names use only the HTTP method (`GET`), not a route template, which reduces the usefulness of traces for route-level analysis. This is a known, documented design choice in the context of Traefik's routing model. Level 2 is appropriate: tracing is intentionally designed, propagation works correctly, but the span naming does not yet expose route-level semantics.
+Context propagation works correctly. SERVER spans are correctly modeled. However, the absence of CLIENT spans for backend calls and the bare `GET` span name without route context represent meaningful gaps. Users cannot see the Traefik→backend call latency in traces, and cannot distinguish spans for different routes without additional attribute inspection. This is characteristic of Level 1: "works for common synchronous flows" but with gaps in completeness.
 
 ---
 
 ### 5. Multi-Signal Observability
 
-**Level: 2 — OpenTelemetry-Native**
+**Level: 1 — OpenTelemetry-Aligned**
 
 #### Evidence
 
 ##### Signal availability
 
-All three signals are present and flowing via OTLP:
-
-| Signal | Status | Transport | Notes |
-|---|---|---|---|
-| Traces | First-class | OTLP gRPC | Stable, documented |
-| Metrics (OTLP) | First-class | OTLP gRPC push | Stable, documented |
-| Metrics (Prometheus) | First-class | Prometheus scrape | Stable, co-equal with OTLP |
-| Logs (access) | Present | OTLP gRPC | Requires `experimental.otlpLogs: true` |
-| Logs (general) | Present | OTLP gRPC | Requires `experimental.otlpLogs: true` |
+All three signals are present via OTLP:
+- **Traces**: Flowing via OTLP gRPC (native OTel Go SDK)
+- **Metrics**: Flowing via OTLP gRPC push + Prometheus scrape
+- **Logs**: Flowing via OTLP gRPC (experimental feature gate)
 
 ##### Cross-signal correlation
 
-- **Trace context in logs**: All 28 access log records have `traceId` and `spanId` populated in both the OTLP `traceId`/`spanId` fields and as log attributes (`trace_id`, `span_id`, `TraceId`, `SpanId`). Cross-signal correlation from logs to traces works natively.
-- **Metrics to traces**: The OTLP metrics (`http.server.request.duration`) share attribute keys with trace spans: `http.request.method`, `http.response.status_code`, `url.scheme`, `server.address`. A user can pivot from a latency metric to traces using these shared dimensions.
-- **Prometheus metrics**: The `traefik_*` Prometheus metrics use Traefik-native label names (`code`, `method`, `entrypoint`, `router`, `service`) that do not directly match trace span attributes, making pivot from Prometheus metrics to traces less natural.
+**Trace-log correlation** (access logs):
+- One access log record in the dataset has `traceId` and `spanId` set in the OTLP log record fields ✅
+- The same IDs appear as log attributes: both `trace_id` and `TraceId` (duplicated)
+- This enables correlation between access log records and traces
+
+**Application log-trace correlation**:
+- Application logs (13 records) have no `traceId` or `spanId` — no correlation possible ❌
+
+**Metric-trace correlation**:
+- Metrics and traces share `service.name` and `service.version` resource attributes ✅
+- The `http.server.request.duration` metric shares attribute keys with trace spans (`http.request.method`, `http.response.status_code`, `server.address`, `url.scheme`) ✅
+- The `traefik_*` metrics use different label names (`code`, `method`) that do not align with trace span attributes ❌
 
 ##### Collection model
 
-- Traces: OTLP push (Traefik → Collector)
-- OTLP Metrics: OTLP push (Traefik → Collector)
-- Prometheus Metrics: Prometheus pull (Collector → Traefik `/metrics`)
-- Logs: OTLP push (Traefik → Collector)
+| Signal | Transport | Collection model |
+|--------|-----------|-----------------|
+| Traces | OTLP gRPC | Push from Traefik to collector |
+| Metrics (OTLP) | OTLP gRPC | Push from Traefik to collector |
+| Metrics (Prometheus) | Prometheus | Pull from collector to Traefik `/metrics` |
+| Logs (general) | OTLP gRPC | Push from Traefik to collector |
+| Logs (access) | OTLP gRPC | Push from Traefik to collector (batched, ~30s delay) |
 
 #### Checklist assessment
 
-- ✅ All three signals are present and flowing
-- ✅ Access logs include trace and span IDs — cross-signal correlation works
-- ✅ OTLP metrics share attribute keys with trace spans
-- ✅ Signals can be correlated without manual stitching (for traces + logs)
-- ⚠️ OTLP log export requires `experimental.otlpLogs: true` — not a stable default
-- ⚠️ Prometheus metrics use different label names than trace span attributes — pivot from Prometheus to traces requires label remapping
-- ⚠️ No documented guidance on when to use which signal or how to navigate between them
+- ✅ All three signals present via OTLP
+- ✅ Access log records include trace context (traceId, spanId)
+- ❌ Application logs do not include trace context
+- ✅ `http.server.request.duration` metric shares attribute keys with trace spans
+- ❌ `traefik_*` metrics use different attribute names than trace spans
+- ❌ Log body is a JSON string, not structured — requires parsing for correlation
+- ⚠️ Duplicate trace ID fields in logs (`trace_id` + `TraceId`) adds noise
 
 #### Rationale
 
-Traefik provides all three signals via OTLP, and the cross-signal correlation story is strong — access logs carry trace context natively, and OTLP metrics share attribute keys with traces. The experimental gate on OTLP logs and the naming inconsistency between Prometheus metrics and trace attributes are the main gaps preventing Level 3. Level 2 is appropriate: signals are intentionally correlated and designed to work together, but the experience is not yet fully optimized.
+All three signals are present, which satisfies the minimum for Level 1. However, signals are not yet designed as a correlated system. Application logs lack trace context. The `traefik_*` metric labels don't align with trace attributes. The log body format (JSON string) requires parsing for investigation workflows. Users can correlate access logs with traces, but the overall experience is fragmented. This is Level 1: signals coexist but do not reinforce each other consistently.
 
 ---
 
@@ -330,40 +333,42 @@ Traefik provides all three signals via OTLP, and the cross-signal correlation st
 
 ##### Span naming
 
-Traefik's SERVER spans are named with the HTTP method only: `GET`. This is technically correct per OTel HTTP semconv (the `name` should be `{method}` for server spans when the route is not known at span creation time, or `{method} {route}` when it is). However, for an ingress controller that always knows the matched route (via `RouterName`), the absence of route information in the span name significantly limits trace usability. Every `GET` request to any route produces a span named `GET`, making it impossible to distinguish routes in a trace list view without drilling into attributes.
+All 235 spans are named `GET` — the bare HTTP method. This is the minimum compliant span name per OTel HTTP semconv (when `http.route` is not known), but Traefik has full routing context and could produce `GET /ping` or route-based names. The bare `GET` name means:
+- All spans look identical in a trace list
+- Users must inspect `url.path` to distinguish spans for different endpoints
+- No route-level aggregation is possible from span names alone
 
-The `entry_point` attribute (e.g., `web`, `traefik`) provides some context, but the router name (e.g., `demo-otel-eval-backend@kubernetes`) is not present as a span attribute on the SERVER span.
+The `entry_point` attribute (e.g., `entry_point=traefik`, `entry_point=web`, `entry_point=metrics`) adds useful context but is not reflected in the span name.
 
 ##### Signal-to-noise ratio
 
-- **Traces**: With `addInternals: true`, Traefik traces all internal routes including health checks (`/ping`) and dashboard requests. This can generate significant noise in production. The feature is opt-in, which is appropriate.
-- **Metrics**: The Prometheus scrape path produces ~55 metrics including all Go runtime metrics (`go_memstats_*`, `go_gc_*`) which are useful for deep debugging but are noisy for operational dashboards. These are standard Go Prometheus metrics, not Traefik-specific.
-- **Logs**: Access logs have a known quirk: `"level":"panic"` appears in the JSON body for all access log records regardless of HTTP status code (e.g., a successful 200 response has `level: panic` in the body). This is a Traefik serialization bug/quirk that can cause alert fatigue if log-level alerting is based on the body content. The OTLP `severityText` is correctly set to `info` (severityNumber=9), but the embedded JSON body says `panic`.
-- **Log body**: The OTLP log body is a JSON string (not a structured object). All access log fields appear both as top-level OTLP log attributes AND embedded inside the JSON string body — duplication that increases payload size.
-- **Log attributes**: `TraceId` and `trace_id` are both present as log attributes (CamelCase and snake_case duplicates). Similarly `SpanId` and `span_id`.
+**Traces**: The `addInternals: true` flag causes Traefik to trace internal routes (ping, dashboard, metrics scraping). This adds significant noise — 55 spans for `entry_point=metrics` (Prometheus scraping) and 169 for `entry_point=traefik` (internal/dashboard) out of 225 total spans. Only 1 span for `entry_point=web` (actual user traffic) was observed. This ratio is inverted from what operators typically want.
+
+**Logs**:
+- Application logs have `severityNumber` set (9=INFO, 13=WARN) but `severityText` is `null` for all 13 records — a quality gap that may affect log routing in backends that rely on `severityText`
+- Access log body is a JSON string — operators must parse the body to extract structured fields, even though the same fields are also present as log attributes
+- Access log attributes include both `TraceId` and `trace_id` (duplicated), and `SpanId` and `span_id` — unnecessary duplication
+
+**Metrics**: The dual metric families (`http.server.request.duration` with semconv labels vs `traefik_*` with proprietary labels) create confusion. Operators must know which family to use for OTel-native tooling vs Prometheus-native tooling.
 
 ##### Default usability
 
-- Operators can use Traefik's traces to understand request flow without deep internal knowledge.
-- The `traefik_*` Prometheus metrics are operationally useful for dashboards (request rates, durations, open connections).
-- The OTLP `http.server.request.duration` and `http.client.request.duration` metrics are directly compatible with OTel-based dashboards.
-- Access logs provide rich per-request detail including routing decisions (`RouterName`, `ServiceName`, `KubernetesIngressName`), which is valuable for debugging routing issues.
+The `addInternals: true` default means internal traffic (healthchecks, dashboard, Prometheus scraping) is traced alongside user traffic. Without filtering, dashboards will show mostly internal traffic. This is a reasonable choice for debugging but adds cognitive overhead for operators.
 
 #### Checklist assessment
 
-- ✅ Trace spans use correct span kinds and current semconv attributes
-- ✅ Metrics provide operationally useful signals (request rates, durations, connection counts)
-- ✅ Access logs include rich routing context (router, service, Kubernetes metadata)
-- ⚠️ Span names are HTTP method only — no route template, limiting trace usability
-- ⚠️ `level: panic` in access log bodies for all requests — known serialization quirk
-- ⚠️ Log attributes duplicate trace context in both CamelCase and snake_case
-- ⚠️ Log body is a JSON string (not structured) — redundant with extracted attributes
-- ⚠️ Access log attribute schema uses Traefik-native names, not OTel semconv
-- ⚠️ `addInternals: true` generates health check trace noise (opt-in, but default in this evaluation)
+- ⚠️ Span names are bare `GET` — technically compliant but lacking route context
+- ❌ `http.route` absent — no route-level span aggregation possible
+- ❌ `addInternals: true` causes internal traffic to dominate trace volume
+- ❌ `severityText` null on application log records
+- ❌ Access log body is JSON string, not structured
+- ⚠️ Duplicate trace ID fields in access log attributes
+- ✅ `entry_point` attribute adds useful operational context
+- ✅ OTel semconv metrics (`http.server.request.duration`) are clean and usable
 
 #### Rationale
 
-Traefik's traces and OTLP metrics are reasonably operator-ready, but the access log signal has several quality issues (panic-level body, duplicated attributes, non-semconv naming) that require user-side filtering or awareness. The absence of route templates in span names limits trace usability for an ingress controller. Level 1 is appropriate: some signals are user-oriented and noise is reduced in some areas, but signal quality is inconsistent across the three signals and operators need project-specific knowledge to interpret access log data correctly.
+Some effort is made toward user-oriented telemetry (semconv-aligned metrics, trace context in access logs, structured log fields). However, span names lack route context, internal traffic dominates trace volume, application log severity text is missing, and the access log body format requires parsing. Operators need domain knowledge to filter and interpret the data effectively. This is Level 1: improving but not yet ergonomic.
 
 ---
 
@@ -375,48 +380,39 @@ Traefik's traces and OTLP metrics are reasonably operator-ready, but the access 
 
 ##### Documentation of telemetry behavior
 
-Traefik documents its OTel configuration options thoroughly at `doc.traefik.io`. The tracing, metrics, and access log pages describe all available options. However, there is no explicit documentation of the telemetry schema as a stable contract — no document stating "these span names, attributes, and metric names are stable and will not change without notice."
-
-The `experimental.otlpLogs: true` feature gate explicitly marks OTLP log export as unstable. No similar stability markers exist for traces or metrics.
+Traefik has dedicated documentation pages for OTel tracing, metrics, and logs at `doc.traefik.io`. The configuration options are documented. However, telemetry is not documented as a stability contract — there is no explicit statement about which telemetry attributes or metric names are stable.
 
 ##### Change communication
 
-The Traefik CHANGELOG contains an `[otel]` tag for OpenTelemetry-related changes. Examples from recent releases:
+The Traefik changelog (`CHANGELOG.md`) includes telemetry-related entries with `[metrics,otel]`, `[tracing]`, `[logs,accesslogs]` tags. Examples from recent versions:
+- `[metrics,otel]` Change request duration metric unit from millisecond to second (#11523) — a breaking change communicated in the changelog
+- `[tracing]` Use ResourceAttributes instead of GlobalAttributes (#11515)
+- `[logs,accesslogs]` OpenTelemetry Logs and Access Logs (#11319) — new feature
+- `[middleware,metrics,tracing]` Upgrade to OpenTelemetry Semantic Conventions v1.26.0 (#10850)
 
-- `**[otel]** Update OpenTelemetry to v1.38.0 and semantic conventions to v1.37.0` — semconv version bumps are tracked
-- `**[tracing]** Follow OTel semantic conventions for root span naming` — span naming changes are noted
-- `**[middleware,tracing]** Introduce trace verbosity config and produce less spans by default` — behavioral changes to span emission are tracked
-- `**[metrics,otel]** Rename traefik_tls_certs_not_after_milliseconds to traefik_tls_certs_not_after_seconds` — metric renames are noted
-- `**[logs,otel]** Add OTel-conformant trace context attributes to access logs` — log schema additions are noted
-
-Changes are tracked in the changelog but without migration guidance for users. The rename of `traefik_tls_certs_not_after_milliseconds` to `traefik_tls_certs_not_after_seconds` is a breaking change for dashboards and alerts, noted in a single changelog entry without a migration guide.
+Changes are tagged and mentioned in changelogs, but without migration guidance for users who depend on specific metric names or attribute values. The metric unit change (ms → seconds) is an example of a breaking change that was communicated but without a deprecation period.
 
 ##### Schema URL presence
 
-- **Traces**: No `schemaUrl` set in OTLP exports from Traefik. The scope is `github.com/traefik/traefik` with version `vunknown`.
-- **Metrics (OTLP)**: Schema URL `https://opentelemetry.io/schemas/1.40.0` is present on Traefik's OTLP metrics.
-- **Logs**: Schema URL `https://opentelemetry.io/schemas/1.40.0` is present on log exports.
-
-The absence of `schemaUrl` on traces (while present on metrics and logs) is inconsistent.
+Schema URL `https://opentelemetry.io/schemas/1.40.0` is set on trace and log exports. This is a positive signal — the project tracks its schema version.
 
 ##### Stability guarantees
 
-No explicit stability guarantees for telemetry are documented. The `experimental.otlpLogs` gate is the only formal stability marker observed. Traefik does not distinguish between stable and experimental telemetry for traces and metrics.
+OTLP log export is explicitly marked as experimental (`--experimental.otlpLogs=true`). There is no documented stability tier for traces or metrics. The instrumentation scope version is `vunknown` for logs — the scope version is not populated.
 
 #### Checklist assessment
 
-- ✅ OTel-related changes appear in the changelog with `[otel]` tag
-- ✅ Schema URL is set on OTLP metrics and logs
-- ✅ OTLP log export is explicitly marked experimental
-- ⚠️ No `schemaUrl` on trace exports
-- ⚠️ No formal telemetry stability contract or documentation
-- ⚠️ Breaking changes (metric renames) noted in changelog but without migration guides
-- ⚠️ No distinction between stable and experimental telemetry for traces and metrics
-- ⚠️ Instrumentation scope version is `vunknown` on traces — version not set in scope
+- ✅ Telemetry changes mentioned in changelogs with categorical tags
+- ✅ Schema URL set on trace and log exports
+- ❌ No explicit stability tiers for telemetry (stable vs experimental, except for logs)
+- ❌ No migration guides for telemetry-specific changes
+- ❌ Instrumentation scope version is `vunknown` for logs
+- ⚠️ Breaking changes (metric unit change) communicated in changelog but without deprecation period
+- ⚠️ OTLP log export still behind experimental feature gate
 
 #### Rationale
 
-Traefik shows awareness that telemetry changes have impact — OTel changes are tracked in the changelog with a dedicated tag, and the experimental log feature is explicitly labeled. However, there is no formal telemetry stability contract, no migration guides for breaking changes, and no explicit stability labels for traces and metrics. Schema URL is inconsistently set (present on metrics and logs, absent on traces). Level 1 is appropriate: intent exists and some changes are communicated, but governance is still emerging.
+Traefik communicates telemetry changes in changelogs with categorical tags, which is more than Level 0. However, there is no explicit stability contract, no migration guides for telemetry changes, and the experimental log feature gate signals ongoing instability. The changelog entries show awareness of downstream impact but informal governance. This is Level 1: some awareness, informal communication, no formal process.
 
 ---
 
@@ -424,35 +420,36 @@ Traefik shows awareness that telemetry changes have impact — OTel changes are 
 
 ### Strengths
 
-- **Comprehensive native OTLP support**: All three signals (traces, metrics, logs) flow via OTLP gRPC natively, with no sidecars or adapters required. Traefik connects directly to an OTel Collector.
-- **Current semantic conventions on traces**: Traefik v3 uses the latest stable OTel HTTP semconv attributes (`http.request.method`, `http.response.status_code`, `url.path`, `url.full`, etc.) with no deprecated attributes observed. The implementation references `semconv/v1.26.0`.
-- **Rich native resource attributes including Kubernetes metadata**: Traefik natively sets `service.name`, `service.version`, process, OS, host, and Kubernetes resource attributes (`k8s.namespace.name`, `k8s.pod.name`, `k8s.pod.uid`, `k8s.deployment.name`, etc.) without requiring collector enrichment.
-- **Verified W3C Trace Context propagation**: Incoming `traceparent` headers are correctly honored — Traefik preserves the trace ID and creates child spans, enabling end-to-end distributed tracing across the ingress boundary.
-- **Trace context in access logs**: All access log records carry `traceId` and `spanId` in OTLP fields, enabling natural cross-signal correlation from logs to traces.
+- **Full OTLP coverage across all three signals**: Traefik v3.7 is one of the few CNCF projects that supports OTLP push for traces, metrics, and logs natively, without sidecars or adapters. The integration "just works" with a standard OTel Collector.
+- **Rich native resource identity**: `service.name`, `service.version`, `telemetry.sdk.*`, `process.*`, and `os.*` are all emitted natively. Operators get meaningful service identity without any collector enrichment.
+- **Current OTel HTTP semconv in traces**: Trace spans use current stable attributes (`http.request.method`, `http.response.status_code`, `url.path`, etc.) with no deprecated fields. The schema URL `https://opentelemetry.io/schemas/1.40.0` is set.
+- **W3C Trace Context propagation**: Traefik correctly reads and propagates `traceparent` headers, enabling end-to-end tracing across the full request path even though Traefik itself doesn't create CLIENT spans.
+- **Dual OTel semconv metrics**: `http.server.request.duration` and `http.client.request.duration` with correct semconv labels are emitted via OTLP alongside the `traefik_*` family.
 
 ### Areas for improvement
 
-- **Add `http.route` to SERVER spans**: Traefik knows the matched router name at span time. Exposing it as `http.route` (or a Traefik-specific attribute like `traefik.router.name`) would transform span names from generic `GET` to route-aware `GET /api/v1/users/{id}`, dramatically improving trace usability.
-- **Fix the `level: panic` access log body quirk**: All access log records embed `"level":"panic"` in the JSON body regardless of HTTP status. This is a serialization bug that causes confusion and potential alert fatigue. The OTLP `severityText` is correctly `info`, but the embedded body is misleading.
-- **Stabilize OTLP log export and remove the experimental gate**: OTLP log export is the most natural path for Traefik in OTel-native environments. Stabilizing `otlpLogs` and making it a first-class, documented feature would complete the three-signal story.
-- **Set `schemaUrl` on trace exports**: Metrics and logs correctly set `schemaUrl=https://opentelemetry.io/schemas/1.40.0`. Traces should do the same for consistency and tooling compatibility.
-- **Align Prometheus metric attribute names with OTel semconv**: The `traefik_*` Prometheus metrics use `code`, `method`, `protocol` labels instead of `http.response.status_code`, `http.request.method`, `network.protocol.name`. Aligning these would enable natural pivot from Prometheus metrics to traces.
+- **Add `http.route` to trace spans**: Traefik has full routing context (router name, matched route). Adding `http.route` to spans would enable route-level aggregation and make span names more meaningful (e.g., `GET /api/{id}` instead of `GET`).
+- **Align `traefik_*` metric labels with OTel semconv**: The `traefik_*` metric family uses `code`, `method`, `protocol` instead of `http.response.status_code`, `http.request.method`, `network.protocol.name`. Migrating these labels (with a deprecation period) would enable consistent tooling across both metric families.
+- **Fix `severityText` on application logs**: All 13 application log records have `severityText: null` despite `severityNumber` being set correctly. This is likely a bug in the OTLP log exporter — the severity text should be populated from the log level.
+- **Add trace context to application logs**: Application logs (startup messages, provider events) have no `traceId` or `spanId`. Adding trace context where available would enable log-trace correlation beyond just access logs.
+- **Stabilize OTLP log export**: Moving OTLP log export out of the experimental feature gate would signal stability to users. The feature appears production-ready based on the telemetry data observed.
+- **Add `service.instance.id` to traces**: In multi-replica deployments, instance-level trace attribution requires `service.instance.id`. This could be set to the pod UID or hostname.
 
 ### Notable observations
 
-- **Dual metrics paths create semantic inconsistency**: Traefik simultaneously pushes OTel-semconv metrics (`http.server.request.duration` with `http.request.method`) and exposes Prometheus metrics (`traefik_entrypoint_requests_total` with `method`) for the same underlying data. This is a pragmatic choice for backward compatibility but creates a split observability experience.
-- **Traefik's built-in K8s resource detector is a standout feature**: Unlike most projects that rely entirely on the collector's k8sattributes processor, Traefik natively detects and sets Kubernetes resource attributes. This reduces pipeline complexity and ensures K8s identity is present even in minimal collector configurations.
-- **Access log attributes are rich but non-standard**: The access log schema (`RouterName`, `ServiceName`, `KubernetesIngressName`, `Duration`, `Overhead`, `RetryAttempts`) provides valuable ingress-specific context not available in traces. However, using Traefik-native names instead of OTel semconv means these attributes cannot be interpreted by generic OTel tooling without project-specific knowledge.
-- **Instrumentation scope version is `vunknown`**: The trace instrumentation scope (`github.com/traefik/traefik`) does not set a version, making it harder for backends to track semconv version changes.
+- **`addInternals: true` inverts the traffic ratio**: With `addInternals: true`, 224 of 225 spans in the evaluation data came from internal traffic (Prometheus scraping, health checks, dashboard) and only 1 from actual user traffic. This is expected behavior but operators should be aware — filtering by `entry_point` is necessary to focus on user-facing traffic.
+- **Duplicate trace ID fields in access logs**: Access log records include both `TraceId`/`SpanId` (PascalCase) and `trace_id`/`span_id` (snake_case) as separate attributes, plus the same values in the JSON body. This triplication suggests the OTLP access log exporter is serializing the same data multiple times through different code paths.
+- **Prometheus scrape and OTLP push produce different metric sets**: The OTLP push includes `http.server.request.duration` (semconv) while Prometheus scrape does not. The `traefik_service_*` metrics appear in both. Operators using only Prometheus scraping miss the semconv-aligned metrics.
+- **Instrumentation scope version**: The trace scope is `github.com/traefik/traefik vunknown` — the version field is not populated. The log scope is `traefik vunknown`. The metrics scope correctly shows `github.com/traefik/traefik v3.7.1`. Consistent scope versioning across signals would improve tooling compatibility.
 
 ---
 
 ## Methodology notes
 
-- Telemetry was collected using an OpenTelemetry Collector with file exporter in a local kind cluster (`otel-eval-traefik`)
-- Traefik v3.7.0 was installed via Helm chart 40.0.0 with OTLP gRPC configured for traces, metrics, and logs
-- The k8sattributes processor was used to distinguish native vs enriched resource attributes (Traefik's built-in K8s detector sets core K8s attributes natively)
-- Semantic conventions were checked against the latest stable OTel specification (v1.26.0+ for HTTP)
-- Traffic generation included normal requests, requests with injected `traceparent` headers, health check requests, and 404 requests
-- Documentation reviewed: `doc.traefik.io` tracing reference, metrics reference, access logs reference, and the Traefik GitHub CHANGELOG
-- Source code reviewed: `pkg/tracing/tracing.go` for semconv version and attribute implementation
+- Telemetry was collected using an OpenTelemetry Collector with file export in a local kind cluster (`otel-eval-traefik`)
+- The k8sattributes processor was used to distinguish native vs enriched resource attributes
+- Traefik v3.7.1 was installed via Helm chart `traefik/traefik` v40.2.0 with OTLP enabled for all signals
+- Traffic was generated via port-forward to the Traefik web entrypoint; Prometheus scraping was also active
+- Semantic conventions were checked against the latest stable OpenTelemetry specification (HTTP semconv v1.26+)
+- The Traefik changelog and documentation were reviewed for stability and change management context
+- All telemetry evidence is from the JSONL files at `/tmp/otel-eval-traefik/`

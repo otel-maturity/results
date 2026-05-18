@@ -4,16 +4,16 @@ metadata:
   name: otel-eval-backend
   namespace: demo
   annotations:
-    # Use Traefik ingress class
     kubernetes.io/ingress.class: traefik
 spec:
   rules:
-  - http:
-      paths:
-      - path: /
-        pathType: Prefix
-        backend:
-          service:
-            name: otel-eval-backend
-            port:
-              number: 3000
+    - host: otel-eval-backend.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: otel-eval-backend
+                port:
+                  number: 3000

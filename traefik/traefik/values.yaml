@@ -1,41 +1,17 @@
 # Traefik Helm values for OTel evaluation
-# Chart: traefik/traefik v40.0.0 (App: v3.7.0)
+# Chart: traefik/traefik v40.2.0 (App: v3.7.1)
 
-# Disable anonymous usage reporting
-global:
-  sendAnonymousUsage: false
-  checkNewVersion: false
+# Tracing via OTLP gRPC to the OTel Collector
+tracing:
+  addInternals: true
+  otlp:
+    enabled: true
+    grpc:
+      enabled: true
+      endpoint: "otel-collector-opentelemetry-collector.opentelemetry.svc.cluster.local:4317"
+      insecure: true
 
-# Single replica is enough for evaluation
-deployment:
-  replicas: 1
-
-# Expose the web entrypoint via NodePort so we can reach it from the host
-service:
-  type: NodePort
-
-ports:
-  web:
-    port: 8000
-    expose:
-      default: true
-    exposedPort: 80
-    nodePort: 30080
-    protocol: TCP
-  traefik:
-    port: 8080
-    expose:
-      default: false
-    exposedPort: 8080
-    protocol: TCP
-  metrics:
-    port: 9100
-    expose:
-      default: false
-    exposedPort: 9100
-    protocol: TCP
-
-# Enable Prometheus metrics with router + service labels for richer data
+# Metrics: both Prometheus (default) and OTLP
 metrics:
   addInternals: true
   prometheus:
@@ -45,38 +21,30 @@ metrics:
     addServicesLabels: true
     service:
       enabled: true
-  # Also enable OTLP metrics push to the collector
   otlp:
     enabled: true
     addEntryPointsLabels: true
     addRoutersLabels: true
     addServicesLabels: true
-    pushInterval: "10s"
     grpc:
       enabled: true
       endpoint: "otel-collector-opentelemetry-collector.opentelemetry.svc.cluster.local:4317"
       insecure: true
 
-# Enable OTLP tracing
-tracing:
-  addInternals: true
-  serviceName: traefik
-  sampleRate: 1.0
-  otlp:
-    enabled: true
-    grpc:
-      enabled: true
-      endpoint: "otel-collector-opentelemetry-collector.opentelemetry.svc.cluster.local:4317"
-      insecure: true
-
-# Enable access logs in JSON format + OTLP (requires experimental.otlpLogs)
+# Enable experimental OTLP logs feature
 experimental:
   otlpLogs: true
 
+# Logs configuration - general logs and access logs via OTLP
 logs:
   general:
-    format: json
     level: INFO
+    otlp:
+      enabled: true
+      grpc:
+        enabled: true
+        endpoint: "otel-collector-opentelemetry-collector.opentelemetry.svc.cluster.local:4317"
+        insecure: true
   access:
     enabled: true
     format: json
@@ -87,25 +55,34 @@ logs:
         endpoint: "otel-collector-opentelemetry-collector.opentelemetry.svc.cluster.local:4317"
         insecure: true
 
-# Enable Kubernetes Ingress and CRD providers
-providers:
-  kubernetesIngress:
+# Expose the Traefik dashboard and API (insecure for eval)
+ingressRoute:
+  dashboard:
     enabled: true
-    publishedService:
-      enabled: true
-  kubernetesCRD:
-    enabled: true
-    allowCrossNamespace: true
+    matchRule: "PathPrefix(`/dashboard`) || PathPrefix(`/api`)"
+    entryPoints: ["web"]
 
-# RBAC
-rbac:
-  enabled: true
+# Service type: ClusterIP
+service:
+  type: ClusterIP
 
-# Resources
-resources:
-  requests:
-    cpu: 100m
-    memory: 64Mi
-  limits:
-    cpu: 500m
-    memory: 256Mi
+# Ports
+ports:
+  web:
+    port: 8000
+    expose:
+      default: true
+    exposedPort: 80
+  websecure:
+    port: 8443
+    expose:
+      default: true
+      exposedPort: 443
+  metrics:
+    port: 9100
+    expose:
+      default: false
+
+global:
+  checkNewVersion: false
+  sendAnonymousUsage: false
