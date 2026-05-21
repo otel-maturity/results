@@ -28,8 +28,6 @@ presets:
     extractAllPodAnnotations: true
 
 # Let the chart auto-generate ClusterRole rules based on enabled presets.
-# Custom rules here would override the chart defaults and break receivers
-# (k8s_cluster needs events, namespaces, deployments, replicasets, etc.).
 clusterRole:
   create: true
 
@@ -41,12 +39,12 @@ tolerations:
 extraVolumes:
   - name: otel-output
     hostPath:
-      path: /tmp/otel
+      path: /tmp/otel-eval-traefik
       type: DirectoryOrCreate
 
 extraVolumeMounts:
   - name: otel-output
-    mountPath: /tmp/otel
+    mountPath: /tmp/otel-eval-traefik
 
 config:
   processors:
@@ -77,11 +75,11 @@ config:
         labels:
           - from: pod
             key_regex: (.*)
-            tag_name: k8s.pod.label.$${1}
+            tag_name: k8s.pod.label.$1
         annotations:
           - from: pod
             key_regex: (.*)
-            tag_name: k8s.pod.annotation.$${1}
+            tag_name: k8s.pod.annotation.$1
       passthrough: false
       pod_association:
         - sources:
@@ -109,13 +107,13 @@ config:
 
   exporters:
     file/traces:
-      path: /tmp/otel/traces.jsonl
+      path: /tmp/otel-eval-traefik/traces.jsonl
       format: json
     file/metrics:
-      path: /tmp/otel/metrics.jsonl
+      path: /tmp/otel-eval-traefik/metrics.jsonl
       format: json
     file/logs:
-      path: /tmp/otel/logs.jsonl
+      path: /tmp/otel-eval-traefik/logs.jsonl
       format: json
     debug:
       verbosity: detailed

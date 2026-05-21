@@ -1,51 +1,28 @@
-# Traefik Helm values for OTel evaluation
-# Chart: traefik/traefik v40.0.0 (App: v3.7.0)
+# Traefik Helm values — OTel Evaluation
+# Chart: traefik/traefik v40.0.0 / App v3.7.0
 
-# Disable anonymous usage reporting
-global:
-  sendAnonymousUsage: false
-  checkNewVersion: false
-
-# Single replica is enough for evaluation
 deployment:
   replicas: 1
 
-# Expose the web entrypoint via NodePort so we can reach it from the host
-service:
-  type: NodePort
+# ── Experimental feature gates ──────────────────────────────────────────────
+experimental:
+  otlpLogs: true          # enables OTLP log export (general + access logs)
 
-ports:
-  web:
-    port: 8000
-    expose:
-      default: true
-    exposedPort: 80
-    nodePort: 30080
-    protocol: TCP
-  traefik:
-    port: 8080
-    expose:
-      default: false
-    exposedPort: 8080
-    protocol: TCP
-  metrics:
-    port: 9100
-    expose:
-      default: false
-    exposedPort: 9100
-    protocol: TCP
+# ── Tracing — OTLP gRPC ─────────────────────────────────────────────────────
+tracing:
+  addInternals: true        # also trace dashboard/ping internal routes
+  serviceName: traefik
+  sampleRate: 1.0           # 100% sampling for evaluation
+  otlp:
+    enabled: true
+    grpc:
+      enabled: true
+      endpoint: "otel-collector-opentelemetry-collector.opentelemetry.svc.cluster.local:4317"
+      insecure: true
 
-# Enable Prometheus metrics with router + service labels for richer data
+# ── Metrics — OTLP gRPC push + Prometheus scrape ────────────────────────────
 metrics:
   addInternals: true
-  prometheus:
-    entryPoint: metrics
-    addEntryPointsLabels: true
-    addRoutersLabels: true
-    addServicesLabels: true
-    service:
-      enabled: true
-  # Also enable OTLP metrics push to the collector
   otlp:
     enabled: true
     addEntryPointsLabels: true
@@ -56,23 +33,15 @@ metrics:
       enabled: true
       endpoint: "otel-collector-opentelemetry-collector.opentelemetry.svc.cluster.local:4317"
       insecure: true
+  prometheus:
+    entryPoint: metrics
+    addEntryPointsLabels: true
+    addRoutersLabels: true
+    addServicesLabels: true
+    service:
+      enabled: true         # creates traefik-metrics ClusterIP service on port 9100
 
-# Enable OTLP tracing
-tracing:
-  addInternals: true
-  serviceName: traefik
-  sampleRate: 1.0
-  otlp:
-    enabled: true
-    grpc:
-      enabled: true
-      endpoint: "otel-collector-opentelemetry-collector.opentelemetry.svc.cluster.local:4317"
-      insecure: true
-
-# Enable access logs in JSON format + OTLP (requires experimental.otlpLogs)
-experimental:
-  otlpLogs: true
-
+# ── Logs — OTLP gRPC (requires experimental.otlpLogs: true) ─────────────────
 logs:
   general:
     format: json
@@ -87,25 +56,21 @@ logs:
         endpoint: "otel-collector-opentelemetry-collector.opentelemetry.svc.cluster.local:4317"
         insecure: true
 
-# Enable Kubernetes Ingress and CRD providers
-providers:
-  kubernetesIngress:
-    enabled: true
-    publishedService:
-      enabled: true
-  kubernetesCRD:
-    enabled: true
-    allowCrossNamespace: true
+# ── Entrypoints ──────────────────────────────────────────────────────────────
+ports:
+  web:
+    port: 8000
+    expose:
+      default: true
+    exposedPort: 80
+    protocol: TCP
+  metrics:
+    port: 9100
+    expose:
+      default: false
+    exposedPort: 9100
+    protocol: TCP
 
-# RBAC
-rbac:
-  enabled: true
-
-# Resources
-resources:
-  requests:
-    cpu: 100m
-    memory: 64Mi
-  limits:
-    cpu: 500m
-    memory: 256Mi
+# ── Service type (LoadBalancer stays pending in kind — use port-forward) ─────
+service:
+  type: LoadBalancer
