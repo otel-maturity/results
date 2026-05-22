@@ -4,6 +4,28 @@
   Copy this entire block and paste it inside <div class="card-grid"> in
   index-template.html. Replace every {{ PLACEHOLDER }} with real values.
 
+  TEMPLATE VARIABLES (replace all {{...}} placeholders before use):
+    traefik         — lowercase slug, e.g. "emissary" (matches the
+                               results/<slug>/ directory). The href is built
+                               as `traefik-report.html` — do NOT
+                               replace the literal `-report.html` suffix.
+    Traefik       — display name, e.g. "Emissary-ingress"
+    v3.7.0            — project version, e.g. "v3.12.2"
+    https://raw.githubusercontent.com/traefik/traefik/master/docs/content/assets/img/traefik.logo.png           — direct image URL for the project logo
+    Ingress Controller / Reverse Proxy           — one short label, e.g. "API Gateway / Ingress"
+    Cloud-native HTTP reverse proxy and load balancer, widely used as a Kubernetes Ingress controller  — one-line project description
+
+  SCORES (0–3 per dimension, used in both the score-pill class and the
+  registerChart() call at the bottom):
+    2, 1, 2,
+    2, 2, 1,
+    2
+
+  SIGNAL STATUS (one of: flowing | partial | none):
+    flowing,  OTLP gRPC · 311 spans
+    flowing, OTLP + Prometheus · 2742 series
+    partial,    OTLP experimental · 72 records
+
   SCORE VALUES: 0 · 1 · 2 · 3  (use the matching CSS class: score-0 … score-3)
   SIGNAL STATUS classes on <span class="signal-dot ...">:
     flowing  → green  (signal fully supported via OTLP or Prometheus)
@@ -28,9 +50,9 @@
 
       <!-- ── Category tag + one-line description ── -->
       <div class="card-meta">
-        <span class="category-tag">Ingress Controller</span>
+        <span class="category-tag">Ingress Controller / Reverse Proxy</span>
         <span class="sep">&middot;</span>
-        <span class="card-desc">Cloud-native HTTP reverse proxy and Kubernetes Ingress controller</span>
+        <span class="card-desc">Cloud-native HTTP reverse proxy and load balancer, widely used as a Kubernetes Ingress controller</span>
       </div>
 
       <!--
@@ -40,12 +62,12 @@
       -->
       <div class="score-pills">
         <span class="score-pill score-2" title="Integration">2</span>
-        <span class="score-pill score-2" title="Semantics">2</span>
+        <span class="score-pill score-1" title="Semantics">1</span>
         <span class="score-pill score-2" title="Resources">2</span>
         <span class="score-pill score-2" title="Tracing">2</span>
         <span class="score-pill score-2" title="Multi-Signal">2</span>
         <span class="score-pill score-1" title="Quality">1</span>
-        <span class="score-pill score-1" title="Stability">1</span>
+        <span class="score-pill score-2" title="Stability">2</span>
       </div>
 
       <!--
@@ -54,9 +76,9 @@
         dot class: flowing | partial | none
       -->
       <div class="card-signals">
-        <span class="signal-pill"><span class="signal-dot flowing"></span> Traces (OTLP gRPC push)</span>
-        <span class="signal-pill"><span class="signal-dot flowing"></span> Metrics (OTLP gRPC + Prometheus)</span>
-        <span class="signal-pill"><span class="signal-dot partial"></span> Logs (OTLP gRPC (experimental))</span>
+        <span class="signal-pill"><span class="signal-dot flowing"></span> Traces (OTLP gRPC · 311 spans)</span>
+        <span class="signal-pill"><span class="signal-dot flowing"></span> Metrics (OTLP + Prometheus · 2742 series)</span>
+        <span class="signal-pill"><span class="signal-dot partial"></span> Logs (OTLP experimental · 72 records)</span>
       </div>
 
       <div class="view-report">View report <span class="arrow">&rarr;</span></div>
@@ -80,11 +102,11 @@
 <script>
 registerChart('chart-traefik', [
   2,   // Integration
-  2,   // Semantics
+  1,   // Semantics
   2,   // Resources
   2,   // Tracing
   2,   // Multi-Signal
   1,   // Quality
-  1    // Stability
+  2    // Stability
 ]);
 </script>

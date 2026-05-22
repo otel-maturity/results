@@ -1,41 +1,22 @@
 # Traefik Helm values for OTel evaluation
-# Chart: traefik/traefik v40.0.0 (App: v3.7.0)
+# Chart: traefik/traefik v40.0.0 (app v3.7.0)
 
-# Disable anonymous usage reporting
-global:
-  sendAnonymousUsage: false
-  checkNewVersion: false
-
-# Single replica is enough for evaluation
 deployment:
   replicas: 1
 
-# Expose the web entrypoint via NodePort so we can reach it from the host
-service:
-  type: NodePort
-
+# Expose metrics on a dedicated entrypoint (port 9100)
 ports:
-  web:
-    port: 8000
-    expose:
-      default: true
-    exposedPort: 80
-    nodePort: 30080
-    protocol: TCP
-  traefik:
-    port: 8080
-    expose:
-      default: false
-    exposedPort: 8080
-    protocol: TCP
   metrics:
     port: 9100
     expose:
       default: false
-    exposedPort: 9100
     protocol: TCP
 
-# Enable Prometheus metrics with router + service labels for richer data
+# Create a ClusterIP service for Prometheus scraping
+service:
+  type: ClusterIP
+
+# Prometheus metrics endpoint (scraped by OTel Collector)
 metrics:
   addInternals: true
   prometheus:
@@ -44,8 +25,9 @@ metrics:
     addRoutersLabels: true
     addServicesLabels: true
     service:
-      enabled: true
-  # Also enable OTLP metrics push to the collector
+      enabled: true  # creates traefik-metrics ClusterIP service on port 9100
+
+  # OTLP push metrics directly to the collector
   otlp:
     enabled: true
     addEntryPointsLabels: true
@@ -57,7 +39,7 @@ metrics:
       endpoint: "otel-collector-opentelemetry-collector.opentelemetry.svc.cluster.local:4317"
       insecure: true
 
-# Enable OTLP tracing
+# OTLP tracing
 tracing:
   addInternals: true
   serviceName: traefik
@@ -69,7 +51,7 @@ tracing:
       endpoint: "otel-collector-opentelemetry-collector.opentelemetry.svc.cluster.local:4317"
       insecure: true
 
-# Enable access logs in JSON format + OTLP (requires experimental.otlpLogs)
+# OTLP log export (experimental feature gate required)
 experimental:
   otlpLogs: true
 
@@ -86,26 +68,3 @@ logs:
         enabled: true
         endpoint: "otel-collector-opentelemetry-collector.opentelemetry.svc.cluster.local:4317"
         insecure: true
-
-# Enable Kubernetes Ingress and CRD providers
-providers:
-  kubernetesIngress:
-    enabled: true
-    publishedService:
-      enabled: true
-  kubernetesCRD:
-    enabled: true
-    allowCrossNamespace: true
-
-# RBAC
-rbac:
-  enabled: true
-
-# Resources
-resources:
-  requests:
-    cpu: 100m
-    memory: 64Mi
-  limits:
-    cpu: 500m
-    memory: 256Mi
